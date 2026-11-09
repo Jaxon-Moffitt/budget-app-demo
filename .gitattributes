@@ -1,0 +1,10 @@
+# Check out text files with LF on every OS. EAS fingerprints hash some
+# files (.gitignore, eas.json) byte for byte, so CRLF copies on Windows
+# gave builds made from a laptop a different fingerprint from the updates
+# EAS publishes from GitHub, and those updates never reached the phone.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ttf binary
+*.otf binary
