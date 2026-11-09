@@ -44,7 +44,7 @@
   },
   "scripts": {
     "start": "expo start --web",
-    "build": "expo export --platform web",
+    "build": "expo export --platform web && cp dist/index.html dist/404.html",
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint"

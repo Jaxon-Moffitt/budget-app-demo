@@ -31,10 +31,4 @@ npm run lint
 npm run build      # static site in dist/
 ```
 
-`dist/` is a plain static site. Upload it to any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages, S3). Unknown paths should fall back to `index.html`.
-
-To serve it from a subpath such as `/budget-demo/`, add `"experiments": { "baseUrl": "/budget-demo" }` to `app.json` before building. To embed it in a portfolio page, an iframe at phone width works well:
-
-```html
-<iframe src="https://your-host/budget-demo/" width="390" height="844" style="border:0;border-radius:24px"></iframe>
-```
+Every push to `main` builds the site and publishes it to GitHub Pages (`.github/workflows/pages.yml`), at https://jaxon-moffitt.github.io/budget-app-demo/. The site is built for that path: `experiments.baseUrl` in `app.json` and the links in `public/` all start with `/budget-app-demo`, so change them together if it moves. `npm run build` also copies `index.html` to `404.html`, so a reload on any screen still opens the app.
