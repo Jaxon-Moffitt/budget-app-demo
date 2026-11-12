@@ -8,10 +8,12 @@ import {
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, type ReactNode } from 'react';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LockScreen } from '@/components/lock-screen';
 import { ToastHost } from '@/components/toast';
-import type { Palette } from '@/constants/theme';
+import { Spacing, type Palette } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStartupUpdate } from '@/hooks/use-startup-update';
 import { useTheme } from '@/hooks/use-theme';
@@ -91,6 +93,14 @@ function RootNavigator() {
   // Only a confirmed "no household" sends someone to set one up. If the
   // lookup failed (offline, say), show the tabs rather than a wrong prompt.
   const needsHousehold = signedIn && household.data === null;
+  // Modals open full screen on Android and the web, and both draw under the
+  // status bar (edge to edge; black-translucent on the iPhone home screen),
+  // so they start below it with some breathing room. iOS shows them as cards.
+  // On the web the form sheets open full screen too.
+  const insets = useSafeAreaInsets();
+  const belowStatusBar = { paddingTop: insets.top + Spacing.three };
+  const modal = { presentation: 'modal', contentStyle: Platform.OS === 'ios' ? undefined : belowStatusBar } as const;
+  const sheetTop = Platform.OS === 'web' ? belowStatusBar : undefined;
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -103,18 +113,19 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={signedIn && !needsHousehold}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="add-partner" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="account/new" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="account/[id]" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="transaction/new" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="transaction/[id]" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="transaction/transfer" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="transaction/split" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="budget/[envelopeId]" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="add-partner" options={modal} />
+          <Stack.Screen name="account/new" options={modal} />
+          <Stack.Screen name="account/[id]" options={modal} />
+          <Stack.Screen name="transaction/new" options={modal} />
+          <Stack.Screen name="transaction/[id]" options={modal} />
+          <Stack.Screen name="transaction/transfer" options={modal} />
+          <Stack.Screen name="transaction/split" options={modal} />
+          <Stack.Screen name="budget/[envelopeId]" options={modal} />
           <Stack.Screen
             name="budget/envelope"
             options={{
               presentation: 'formSheet',
+              contentStyle: sheetTop,
               sheetAllowedDetents: [0.85, 1],
               sheetGrabberVisible: true,
               sheetCornerRadius: 28,
@@ -124,19 +135,20 @@ function RootNavigator() {
             name="theme-color"
             options={{
               presentation: 'formSheet',
+              contentStyle: sheetTop,
               sheetAllowedDetents: [1],
               sheetGrabberVisible: true,
               sheetCornerRadius: 28,
             }}
           />
-          <Stack.Screen name="envelopes" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="envelopes/[id]" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="envelopes/group/[id]" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="categories" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="categories/[id]" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="rules" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="budget-start" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="rules/[id]" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="envelopes" options={modal} />
+          <Stack.Screen name="envelopes/[id]" options={modal} />
+          <Stack.Screen name="envelopes/group/[id]" options={modal} />
+          <Stack.Screen name="categories" options={modal} />
+          <Stack.Screen name="categories/[id]" options={modal} />
+          <Stack.Screen name="rules" options={modal} />
+          <Stack.Screen name="budget-start" options={modal} />
+          <Stack.Screen name="rules/[id]" options={modal} />
         </Stack.Protected>
         <Stack.Protected guard={needsHousehold}>
           <Stack.Screen name="create-household" />
