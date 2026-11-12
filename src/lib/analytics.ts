@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { AnalyticsRow } from '@/domain/analytics';
 import type { Cents } from '@/domain/money';
+import type { ChargeRow } from '@/domain/recurring';
 import { addMonths, type Month } from '@/domain/month';
 import { supabase } from '@/lib/supabase';
 
@@ -138,6 +139,85 @@ export function useCategoryTransactions(categoryId: string | null, month: Month)
         account: r.account ? (r.account.nickname ?? r.account.name) : null,
         isSplitPart: r.parent_id !== null,
       }));
+    },
+  });
+}
+
+/**
+ * Words in bank descriptions of money moving between accounts. Unfiled rows
+ * with them aren't purchases, so they can't be subscriptions.
+ */
+const MOVES_MONEY = /\b(transfers?|xfer|trnsfr|pmt|pymt|payments?|withdrawal|atm)\b/i;
+
+/**
+ * Money out of budget accounts since `since`, for finding subscriptions:
+ * spending, plus rows nobody has filed (older history is mostly unfiled).
+ * Transfers, investments and Starting Balance rows are left out.
+ */
+export function useChargeHistory(since: string) {
+  return useQuery({
+    queryKey: ['transactions', 'charges', since],
+    async queryFn(): Promise<ChargeRow[]> {
+      type Row = {
+        date: string;
+        amount: Cents;
+        kind: string | null;
+        imported_id: string | null;
+        imported_payee: string | null;
+        payee: { name: string } | null;
+      };
+      const out: ChargeRow[] = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('id, date, amount, kind, imported_id, imported_payee, payee:payees(name), account:accounts!inner(on_budget)')
+          .eq('account.on_budget', true)
+          .is('parent_id', null)
+          .is('transfer_id', null)
+          .lt('amount', 0)
+          .gte('date', since)
+          .order('date')
+          .order('id')
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        const rows = data as unknown as Row[];
+        for (const r of rows) {
+          if (r.imported_id === 'starting-balance') continue;
+          if (r.kind !== null && r.kind !== 'spending') continue;
+          const merchant = r.payee?.name ?? r.imported_payee;
+          if (!merchant) continue;
+          if (r.kind === null && MOVES_MONEY.test(`${merchant} ${r.imported_payee ?? ''}`)) continue;
+          out.push({ date: r.date, amount: r.amount, merchant });
+        }
+        if (rows.length < PAGE) return out;
+      }
+    },
+  });
+}
+
+/**
+ * Every transaction in any account from `since` on (split parents, not
+ * parts), for working net worth back from today's balances.
+ */
+export function useAccountActivity(since: string) {
+  return useQuery({
+    queryKey: ['transactions', 'account-activity', since],
+    async queryFn(): Promise<{ account_id: string; date: string; amount: Cents }[]> {
+      const out: { account_id: string; date: string; amount: Cents }[] = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('id, account_id, date, amount')
+          .is('parent_id', null)
+          .gte('date', since)
+          .order('date')
+          .order('id')
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        const rows = data as { account_id: string; date: string; amount: Cents }[];
+        for (const r of rows) out.push({ account_id: r.account_id, date: r.date, amount: r.amount });
+        if (rows.length < PAGE) return out;
+      }
     },
   });
 }

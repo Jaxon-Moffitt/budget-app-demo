@@ -3,7 +3,7 @@
  * this month filled in up to today. Dates are worked out from today so the
  * demo never looks stale. Amounts are integer cents, as in the real app.
  */
-import { addMonths, localDate, type Month } from '../domain/month.ts';
+import { addMonths, localDate, monthRange, type Month } from '../domain/month.ts';
 
 type Row = Record<string, any>;
 
@@ -33,7 +33,10 @@ export function seed(now: Date = new Date()): Tables {
   const current = today.slice(0, 7);
   const previous = addMonths(current, -1);
   const day = (month: Month, d: number) => `${month}-${String(Math.min(d, daysIn(month))).padStart(2, '0')}`;
-  const beforeStart = day(addMonths(previous, -1), 31);
+  // Four months of history before the budget starts, so Analytics has
+  // trends and subscriptions to find. It's archived, as in the real app.
+  const first = addMonths(previous, -4);
+  const beforeStart = day(addMonths(first, -1), 31);
 
   const accounts: Row[] = [
     ['chk', 'Everyday Checking (1234)', 'checking', true],
@@ -183,13 +186,20 @@ export function seed(now: Date = new Date()): Tables {
 
   const happened = (date: string) => date <= today;
   const spend = (account: string, month: Month, d: number, amount: number, payee: string, envelope: string, category: string | null = null) => {
-    const date = day(month, d);
-    if (happened(date)) add({ account, date, amount: -amount, payee, kind: 'spending', envelope, category });
+    // Everyday shopping differs from month to month, in day and amount;
+    // bills stay the same. The last two months keep their exact days and
+    // amounts, which the tests rely on.
+    const back = monthRange(month, previous).length - 1;
+    const date = day(month, envelope === 'fts' && back > 0 ? Math.max(1, d + ((back * 7) % 17) - 8) : d);
+    const varied =
+      envelope === 'fts' && back > 0 ? Math.round(amount * (0.7 + ((Number(month.slice(5)) * 7 + d * 3) % 13) / 20)) : amount;
+    if (happened(date)) add({ account, date, amount: -varied, payee, kind: 'spending', envelope, category });
   };
 
   let cardBalance = 64000;
-  for (const month of [previous, current]) {
+  for (const month of monthRange(first, current)) {
     const isPrev = month === previous;
+    const isPast = month !== current;
     const at = (d: number) => day(month, d);
     for (const d of [1, 15]) {
       if (happened(at(d))) add({ account: 'chk', date: at(d), amount: 215000, payee: 'Acme Corp', description: 'ACME CORP PAYROLL', kind: 'income' });
@@ -224,11 +234,14 @@ export function seed(now: Date = new Date()): Tables {
     if (isPrev) {
       spend('card', month, 11, 3200, 'City Cinema', 'fts', 'fun');
       spend('card', month, 19, 18900, 'Quick Lube & Tire', 'car', 'auto');
+    }
+    if (isPast) {
       const last = daysIn(month);
       add({ account: 'sav', date: at(last), amount: 2842, payee: 'Interest', description: 'INTEREST PAID', kind: 'income', envelope: 'ef' });
       add({ account: 'trv', date: at(last), amount: 391, payee: 'Interest', description: 'INTEREST PAID', kind: 'income', envelope: 'travel' });
       add({ account: 'brk', date: at(last), amount: 1240, payee: 'Dividend', description: 'DIVIDEND REINVEST' });
-    } else {
+    }
+    if (!isPast) {
       // A birthday gift bigger than the Gifts envelope: it shows up overspent.
       spend('card', month, 3, 10500, 'Paper & Bloom', 'gifts', 'gift');
     }
@@ -248,6 +261,13 @@ export function seed(now: Date = new Date()): Tables {
     const date = recent(back);
     if (date >= `${current}-01`) add({ account, date, amount, description });
   }
+
+  // Savings envelopes start with what their accounts held when the budget
+  // began, so each one matches its account.
+  const heldAtStart = (account: string) =>
+    transactions.filter(t => t.account_id === account && t.date < `${previous}-01`).reduce((sum, t) => sum + t.amount, 0);
+  envelopes.find(e => e.id === 'ef')!.starting_balance = heldAtStart('sav');
+  envelopes.find(e => e.id === 'travel')!.starting_balance = heldAtStart('trv');
 
   const budgetMonths: Row[] = [];
   const assign = (month: Month, amounts: Record<string, number>) => {

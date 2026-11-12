@@ -4,18 +4,21 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FillBar } from '@/components/fill-bar';
+import { Button } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { IconButton } from '@/components/icon-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { monthTotals, spendingByCategory, topPayees, type MonthTotals } from '@/domain/analytics';
 import { formatCents } from '@/domain/money';
-import { addMonths, monthName, monthRange, type Month } from '@/domain/month';
+import { addMonths, formatDay, localDate, monthName, monthRange, type Month } from '@/domain/month';
+import { netWorth, netWorthByMonth } from '@/domain/net-worth';
+import { findRecurring } from '@/domain/recurring';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAnalyticsRows, useUncategorizedCount } from '@/lib/analytics';
+import { useAccountActivity, useAnalyticsRows, useChargeHistory, useUncategorizedCount } from '@/lib/analytics';
 import { currentMonth } from '@/lib/budget';
-import { useCategories, useHousehold } from '@/lib/queries';
+import { useAccounts, useCategories, useHousehold } from '@/lib/queries';
 
 /** How many months the trend chart shows, ending at the chosen month. */
 const TREND_MONTHS = 6;
@@ -163,9 +166,186 @@ export default function AnalyticsScreen() {
               </ThemedText>
             </>
           )}
+
+          <Section title="Subscriptions and bills">
+            <Subscriptions />
+          </Section>
+
+          <Section title="Net worth">
+            <NetWorthCard />
+          </Section>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+/** How many subscriptions show before "Show all". */
+const SUBSCRIPTIONS_SHOWN = 8;
+
+/** Charges that repeat on a schedule, found in the last 13 months of history. */
+function Subscriptions() {
+  const theme = useTheme();
+  const today = localDate();
+  const history = useChargeHistory(`${addMonths(today.slice(0, 7), -13)}-01`);
+  const found = useMemo(() => (history.data ? findRecurring(history.data, today) : []), [history.data, today]);
+  const [showAll, setShowAll] = useState(false);
+
+  if (history.isPending) return <ActivityIndicator />;
+  if (history.error) {
+    return <ThemedText themeColor="danger">Couldn’t look for subscriptions: {history.error.message}</ThemedText>;
+  }
+  if (found.length === 0) {
+    return <Empty text="No regular charges found yet. They show up after a few months of the same charge." />;
+  }
+  const monthly = found.reduce((s, r) => s + r.monthly, 0);
+  const shown = showAll ? found : found.slice(0, SUBSCRIPTIONS_SHOWN);
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+      <View style={styles.cardHeader}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {found.length} found · about
+        </ThemedText>
+        <ThemedText style={styles.big}>{formatCents(monthly)} a month</ThemedText>
+      </View>
+      {shown.map(r => (
+        <View
+          key={`${r.merchant}-${r.cadence}`}
+          accessible
+          accessibilityLabel={`${r.merchant}: ${r.varies ? 'about ' : ''}${formatCents(r.amount)} ${r.cadence}, next around ${formatDay(r.nextDate)}`}
+          style={[styles.payee, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border }]}>
+          <View style={styles.flex}>
+            <ThemedText numberOfLines={1}>{r.merchant}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              {r.cadence[0].toUpperCase() + r.cadence.slice(1)} · next {r.nextDate < today ? 'due' : formatDay(r.nextDate)}
+            </ThemedText>
+          </View>
+          <ThemedText style={styles.amount}>
+            {r.varies ? '~' : ''}
+            {formatCents(r.amount)}
+          </ThemedText>
+        </View>
+      ))}
+      {found.length > SUBSCRIPTIONS_SHOWN && (
+        <View style={[styles.more, { borderColor: theme.border }]}>
+          <Button
+            variant="plain"
+            title={showAll ? 'Show fewer' : `Show all ${found.length}`}
+            onPress={() => setShowAll(v => !v)}
+          />
+        </View>
+      )}
+      <ThemedText type="small" themeColor="textSecondary" style={styles.cardNote}>
+        Found from charges that repeat on a schedule for about the same amount. ~ means the amount varies.
+      </ThemedText>
+    </View>
+  );
+}
+
+/** "$36.0k", "−$1.2k", "$850": short enough to sit above a bar. */
+function compactCents(cents: number): string {
+  const dollars = Math.abs(cents) / 100;
+  const text =
+    dollars >= 1_000_000
+      ? `$${(dollars / 1_000_000).toFixed(1)}M`
+      : dollars >= 1000
+        ? `$${(dollars / 1000).toFixed(1)}k`
+        : `$${Math.round(dollars)}`;
+  return cents < 0 ? `−${text}` : text;
+}
+
+/** How many months the net worth chart shows, ending today. */
+const NET_WORTH_MONTHS = 6;
+
+function NetWorthCard() {
+  const theme = useTheme();
+  const accounts = useAccounts();
+  const months = useMemo(() => monthRange(addMonths(currentMonth(), 1 - NET_WORTH_MONTHS), currentMonth()), []);
+  const activity = useAccountActivity(`${addMonths(months[0], 1)}-01`);
+  const worth = useMemo(() => (accounts.data ? netWorth(accounts.data) : null), [accounts.data]);
+  const trend = useMemo(
+    () => (accounts.data && activity.data ? netWorthByMonth(accounts.data, activity.data, months) : []),
+    [accounts.data, activity.data, months],
+  );
+
+  if (accounts.isPending) return <ActivityIndicator />;
+  if (accounts.error || !worth) {
+    return <ThemedText themeColor="danger">Couldn’t load accounts: {accounts.error?.message}</ThemedText>;
+  }
+  const change = trend.length > 1 ? trend[trend.length - 1].total - trend[trend.length - 2].total : null;
+  const top = Math.max(0, ...trend.map(t => t.total));
+  const bottom = Math.min(0, ...trend.map(t => t.total));
+  const span = Math.max(1, top - bottom);
+  const height = 96;
+  const zero = Math.round((top / span) * height);
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+      <View style={styles.cardHeader}>
+        <ThemedText type="small" themeColor="textSecondary">
+          Estimated net worth
+        </ThemedText>
+        <ThemedText style={styles.big} themeColor={worth.total < 0 ? 'danger' : 'text'}>
+          {formatCents(worth.total)}
+        </ThemedText>
+        {change !== null && (
+          <ThemedText type="small" themeColor={change < 0 ? 'danger' : 'accent'}>
+            {change >= 0 ? '+' : '−'}
+            {formatCents(Math.abs(change))} since the end of {monthName(trend[trend.length - 2].month)}
+          </ThemedText>
+        )}
+      </View>
+
+      {trend.length > 0 && (
+        <View
+          style={styles.worthBars}
+          accessible
+          accessibilityLabel={`Net worth by month: ${trend.map(t => `${monthName(t.month)} ${formatCents(t.total)}`).join(', ')}`}>
+          {trend.map(t => {
+            const h = Math.max(2, Math.round((Math.abs(t.total) / span) * height));
+            const last = t.month === months[months.length - 1];
+            return (
+              <View key={t.month} style={styles.barGroup}>
+                <ThemedText type="small" themeColor={last ? 'text' : 'textSecondary'} style={styles.barValue}>
+                  {compactCents(t.total)}
+                </ThemedText>
+                <View style={{ height, width: '100%', alignItems: 'center' }}>
+                  <View
+                    style={[
+                      styles.worthBar,
+                      t.total >= 0 ? { position: 'absolute', bottom: height - zero, height: h } : { position: 'absolute', top: zero, height: h },
+                      { backgroundColor: t.total < 0 ? theme.danger : last ? theme.accent : theme.track },
+                    ]}
+                  />
+                </View>
+                <ThemedText type={last ? 'smallBold' : 'small'} themeColor={last ? 'text' : 'textSecondary'}>
+                  {monthName(t.month, 'short')}
+                </ThemedText>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {worth.groups.map(g => (
+        <View key={g.key} style={[styles.payee, { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border }]}>
+          <View style={styles.flex}>
+            <ThemedText>{g.label}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {g.count} {g.count === 1 ? 'account' : 'accounts'}
+            </ThemedText>
+          </View>
+          <ThemedText style={styles.amount} themeColor={g.total < 0 ? 'danger' : 'text'}>
+            {formatCents(g.total)}
+          </ThemedText>
+        </View>
+      ))}
+      <ThemedText type="small" themeColor="textSecondary" style={styles.cardNote}>
+        From the open accounts in the app, including off-budget ones. Anything not in the app (a home, a car,
+        loans) isn’t counted. Past months are worked back from today’s balances, so investment gains and losses
+        aren’t split out by month.
+      </ThemedText>
+    </View>
   );
 }
 
@@ -361,6 +541,13 @@ const styles = StyleSheet.create({
   bar: { width: 12, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   monthLabel: { borderRadius: 10, paddingHorizontal: Spacing.two, paddingVertical: Spacing.half },
   note: { paddingHorizontal: Spacing.two },
+  cardHeader: { padding: Spacing.three, gap: Spacing.half },
+  big: { fontSize: 26, lineHeight: 32, fontWeight: 800, fontVariant: ['tabular-nums'] },
+  more: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: Spacing.one },
+  cardNote: { padding: Spacing.three, paddingTop: Spacing.two },
+  worthBars: { flexDirection: 'row', paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
+  worthBar: { width: 20, borderRadius: 5 },
+  barValue: { fontSize: 11, fontVariant: ['tabular-nums'] },
   empty: { paddingHorizontal: Spacing.two },
   flex: { flex: 1 },
   dim: { opacity: 0.6 },
