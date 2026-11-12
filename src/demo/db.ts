@@ -147,10 +147,12 @@ class Query implements PromiseLike<Result> {
   private max: number | null = null;
   private one: 'single' | 'maybe' | null = null;
   private returning: Field[] | null = null;
+  private counting: { head: boolean } | null = null;
 
   constructor(private table: keyof Tables) {}
 
-  select(fields = '*') {
+  select(fields = '*', options: { count?: 'exact'; head?: boolean } = {}) {
+    if (options.count) this.counting = { head: options.head ?? false };
     if (this.mode.kind === 'select') this.mode = { kind: 'select', fields: parseSelect(fields) };
     // After insert, select() asks for the new rows back, as in PostgREST.
     else this.returning = parseSelect(fields);
@@ -250,7 +252,10 @@ class Query implements PromiseLike<Result> {
   ): PromiseLike<A | B> {
     let result: Result;
     try {
-      result = { data: this.run(), error: null };
+      const data = this.run();
+      result = this.counting
+        ? { data: this.counting.head ? null : data, error: null, count: Array.isArray(data) ? data.length : 0 }
+        : { data, error: null };
     } catch (e) {
       result = { data: null, error: { message: e instanceof Error ? e.message : String(e) } };
     }

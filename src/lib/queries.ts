@@ -108,8 +108,11 @@ export type Category = {
   sort_order: number;
 };
 
-/** "review": budget-account transactions nobody has given a type yet. */
-export type TransactionFilter = 'all' | 'review';
+/**
+ * "review": budget-account transactions nobody has given a type yet.
+ * "uncategorized": spending in budget accounts with no category.
+ */
+export type TransactionFilter = 'all' | 'review' | 'uncategorized';
 
 export type Household = {
   id: string;
@@ -251,6 +254,12 @@ export function useTransactions(filter: TransactionFilter = 'all', since: string
           .eq('is_parent', false)
           .eq('account.on_budget', true)
           .or('imported_id.is.null,imported_id.neq.starting-balance');
+      } else if (filter === 'uncategorized') {
+        query = query
+          .eq('kind', 'spending')
+          .is('category_id', null)
+          .eq('is_parent', false)
+          .eq('account.on_budget', true);
       }
       const { data, error } = await query
         .order('date', { ascending: false })

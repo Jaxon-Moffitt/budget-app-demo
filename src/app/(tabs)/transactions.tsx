@@ -32,19 +32,21 @@ import { useApplyRules } from '@/lib/rules';
 const FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'review', label: 'To review' },
+  { value: 'uncategorized', label: 'No category' },
 ] as const;
 
 export default function TransactionsScreen() {
   const theme = useTheme();
   // Kept in the URL so other screens (the Budget tab) can open a filter.
   const params = useLocalSearchParams<{ filter?: string }>();
-  const filter: TransactionFilter = params.filter === 'review' ? 'review' : 'all';
+  const filter: TransactionFilter =
+    params.filter === 'review' || params.filter === 'uncategorized' ? params.filter : 'all';
   const setFilter = (next: TransactionFilter) => router.setParams({ filter: next });
   const start = useHousehold(true).data?.budgetStart ?? null;
   // Before the budget's first month is archive: To review never shows it,
   // and All shows it only when asked.
   const [showArchived, setShowArchived] = useState(false);
-  const since = start && (filter === 'review' || !showArchived) ? `${start}-01` : null;
+  const since = start && (filter !== 'all' || !showArchived) ? `${start}-01` : null;
   const query = useTransactions(filter, since);
   const bank = useBankRefresh();
   const apply = useApplyRules();
@@ -88,6 +90,11 @@ export default function TransactionsScreen() {
                 <Button variant="plain" title="Add" onPress={() => router.push('/transaction/new')} />
               </View>
               <Segmented<TransactionFilter> options={FILTERS} value={filter} onChange={setFilter} />
+              {filter === 'uncategorized' && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Spending with no category. Tap one to give it a category; it leaves this list once saved.
+                </ThemedText>
+              )}
               {filter === 'review' && (
                 <View style={styles.reviewActions}>
                   <View style={styles.flex}>
@@ -112,7 +119,9 @@ export default function TransactionsScreen() {
               <ThemedText themeColor="textSecondary">
                 {filter === 'review'
                   ? 'Everything in your budget accounts has been filed.'
-                  : 'No transactions yet. Link your bank in Settings, or pull down to sync.'}
+                  : filter === 'uncategorized'
+                    ? 'Every purchase has a category.'
+                    : 'No transactions yet. Link your bank in Settings, or pull down to sync.'}
               </ThemedText>
             )
           }

@@ -15,14 +15,19 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf="envelope" md="mail" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="accounts">
-        <NativeTabs.Trigger.Label>Accounts</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
-      </NativeTabs.Trigger>
-
       <NativeTabs.Trigger name="transactions">
         <NativeTabs.Trigger.Label>Transactions</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="list.bullet" md="list" />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="analytics">
+        <NativeTabs.Trigger.Label>Analytics</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="accounts">
+        <NativeTabs.Trigger.Label>Accounts</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="settings">

@@ -95,6 +95,11 @@ export function seed(now: Date = new Date()): Tables {
     ['household', 'Household', 'fts'],
     ['gift', 'Gifts', 'gifts'],
     ['fun', 'Entertainment', 'fts'],
+    ['housing', 'Housing', 'rent'],
+    ['utilities', 'Utilities', 'util'],
+    ['streaming', 'Streaming', 'subs'],
+    ['insurance', 'Insurance', 'ins'],
+    ['auto', 'Car repairs', 'car'],
   ].map(([id, name, env], i) => ({ id, household_id: H, name, default_envelope_id: env, hidden: false, sort_order: i + 1 }));
 
   const payees: Row[] = [];
@@ -189,18 +194,19 @@ export function seed(now: Date = new Date()): Tables {
     for (const d of [1, 15]) {
       if (happened(at(d))) add({ account: 'chk', date: at(d), amount: 215000, payee: 'Acme Corp', description: 'ACME CORP PAYROLL', kind: 'income' });
     }
-    spend('chk', month, 1, 145000, 'Greenwood Apartments', 'rent');
+    spend('chk', month, 1, 145000, 'Greenwood Apartments', 'rent', 'housing');
     if (happened(at(2))) {
       transfer('chk', 'sav', at(2), 30000);
       transfer('chk', 'trv', at(2), 15000);
     }
     const cardStart = transactions.length;
     spend('card', month, 3, 8612, "Trader Joe's", 'fts', 'groceries');
-    spend('card', month, 5, 1549, 'Netflix', 'subs');
+    spend('card', month, 5, 1549, 'Netflix', 'subs', 'streaming');
     spend('card', month, 6, 4218, 'Corner Bistro', 'fts', 'dining');
-    spend('chk', month, 8, 11243, 'City Power & Water', 'util');
+    spend('chk', month, 8, 11243, 'City Power & Water', 'util', 'utilities');
     spend('card', month, 9, 4820, 'Shell', 'fts', 'gas');
     spend('card', month, 10, 10245, "Trader Joe's", 'fts', 'groceries');
+    // Left without a category, for "Categorize transactions".
     spend('chk', month, 12, 6500, 'FastNet Internet', 'util');
     spend('card', month, 14, 1875, 'Taco Spot', 'fts', 'dining');
     if (happened(at(15))) transfer('chk', 'brk', at(15), 25000, 'invest');
@@ -210,14 +216,14 @@ export function seed(now: Date = new Date()): Tables {
     }
     spend('card', month, 17, 7430, "Trader Joe's", 'fts', 'groceries');
     spend('chk', month, 18, 4500, 'Mobile Co', 'phone');
-    spend('card', month, 20, 1199, 'Spotify', 'subs');
-    spend('chk', month, 22, 12800, 'Safe Auto Insurance', 'ins');
+    spend('card', month, 20, 1199, 'Spotify', 'subs', 'streaming');
+    spend('chk', month, 22, 12800, 'Safe Auto Insurance', 'ins', 'insurance');
     spend('card', month, 23, 4820, 'Shell', 'fts', 'gas');
     spend('card', month, 24, 9588, "Trader Joe's", 'fts', 'groceries');
     spend('card', month, 27, 6340, 'Sushi House', 'fts', 'dining');
     if (isPrev) {
       spend('card', month, 11, 3200, 'City Cinema', 'fts', 'fun');
-      spend('card', month, 19, 18900, 'Quick Lube & Tire', 'car');
+      spend('card', month, 19, 18900, 'Quick Lube & Tire', 'car', 'auto');
       const last = daysIn(month);
       add({ account: 'sav', date: at(last), amount: 2842, payee: 'Interest', description: 'INTEREST PAID', kind: 'income', envelope: 'ef' });
       add({ account: 'trv', date: at(last), amount: 391, payee: 'Interest', description: 'INTEREST PAID', kind: 'income', envelope: 'travel' });
@@ -277,8 +283,8 @@ export function seed(now: Date = new Date()): Tables {
 
   const rules = [
     ['PAYROLL', 'in', null, 'income', null, null],
-    ['NETFLIX', 'out', null, 'spending', 'subs', null],
-    ['SPOTIFY', 'out', null, 'spending', 'subs', null],
+    ['NETFLIX', 'out', null, 'spending', 'subs', 'streaming'],
+    ['SPOTIFY', 'out', null, 'spending', 'subs', 'streaming'],
     ["TRADER JOE", 'out', null, 'spending', 'fts', 'groceries'],
     ['SHELL', 'out', null, 'spending', 'fts', 'gas'],
     ['INTEREST', 'in', 'sav', 'income', 'ef', null],
