@@ -236,6 +236,7 @@ function RuleForm({
         {draft.kind !== 'transfer' && (
           <CategoryChooser
             value={draft.categoryId}
+            newEnvelopeId={draft.kind === 'spending' ? draft.envelopeId : null}
             onChange={c =>
               setDraft(d => ({
                 ...d,

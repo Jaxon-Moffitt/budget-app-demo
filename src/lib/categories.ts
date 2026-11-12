@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { cleanName } from '@/domain/categories';
+import type { Category } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
 /** These changes can move money between envelopes and rename transactions. */
@@ -15,12 +16,13 @@ function useInvalidate() {
     ]);
 }
 
-function useChange<Args>(fn: (args: Args) => PromiseLike<{ error: unknown }>) {
+function useChange<Args, Result = unknown>(fn: (args: Args) => PromiseLike<{ data?: Result | null; error: unknown }>) {
   const invalidate = useInvalidate();
   return useMutation({
     async mutationFn(args: Args) {
-      const { error } = await fn(args);
+      const { data, error } = await fn(args);
       if (error) throw error;
+      return data as Result;
     },
     onSuccess: invalidate,
   });
@@ -95,7 +97,10 @@ export const useCreateCategory = () =>
         name: cleanName(c.name),
         default_envelope_id: c.defaultEnvelopeId,
         sort_order: c.sortOrder,
-      }),
+      })
+      // The new row comes back, so a picker can select it straight away.
+      .select('id, name, default_envelope_id, hidden, sort_order')
+      .single<Category>(),
   );
 
 export const useUpdateCategory = () =>

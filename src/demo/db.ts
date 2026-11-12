@@ -146,11 +146,14 @@ class Query implements PromiseLike<Result> {
   private window: { from: number; to: number } | null = null;
   private max: number | null = null;
   private one: 'single' | 'maybe' | null = null;
+  private returning: Field[] | null = null;
 
   constructor(private table: keyof Tables) {}
 
   select(fields = '*') {
     if (this.mode.kind === 'select') this.mode = { kind: 'select', fields: parseSelect(fields) };
+    // After insert, select() asks for the new rows back, as in PostgREST.
+    else this.returning = parseSelect(fields);
     return this;
   }
   insert(values: Row | Row[]) {
@@ -230,7 +233,9 @@ class Query implements PromiseLike<Result> {
     this.max = n;
     return this;
   }
-  single() {
+  // The type argument matches supabase-js's; the demo doesn't check it.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  single<T = unknown>() {
     this.one = 'single';
     return this;
   }
@@ -269,9 +274,14 @@ class Query implements PromiseLike<Result> {
     switch (this.mode.kind) {
       case 'select':
         return this.runSelect(this.mode.fields);
-      case 'insert':
-        afterInsert(this.table, this.mode.rows.map(r => insertRow(this.table, r)));
-        return null;
+      case 'insert': {
+        const inserted = this.mode.rows.map(r => insertRow(this.table, r));
+        afterInsert(this.table, inserted);
+        if (!this.returning) return null;
+        const fields = this.returning;
+        const out = inserted.map(row => project(this.table, row, fields));
+        return this.one ? (out[0] ?? null) : out;
+      }
       case 'update': {
         for (const row of this.rows().filter(r => this.matches(r))) updateRow(this.table, row, this.mode.changes);
         return null;

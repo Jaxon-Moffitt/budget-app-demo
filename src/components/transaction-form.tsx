@@ -236,6 +236,7 @@ export function TransactionForm({
         {showCategory && (
           <CategoryChooser
             value={values.categoryId}
+            newEnvelopeId={values.kind === 'spending' ? values.envelopeId : null}
             onChange={c =>
               setValues(v => ({
                 ...v,

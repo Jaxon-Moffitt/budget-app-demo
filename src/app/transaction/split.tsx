@@ -151,6 +151,7 @@ function SplitEditor({ transaction, existing }: { transaction: TransactionDetail
             <EnvelopeChooser value={p.envelopeId} onChange={id => update(p.key, { envelopeId: id })} />
             <CategoryChooser
               value={p.categoryId}
+              newEnvelopeId={p.envelopeId}
               onChange={c =>
                 update(p.key, {
                   categoryId: c?.id ?? null,
