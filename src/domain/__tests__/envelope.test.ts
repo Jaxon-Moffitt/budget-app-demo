@@ -1,4 +1,4 @@
-import { checkMove, envelopeView, linkedCheck, quickPicks } from '../envelope';
+import { checkMove, envelopeLedger, envelopeView, linkedCheck, quickPicks } from '../envelope';
 
 const month = (carried: number, assigned: number, spending: number, invested = 0, income = 0) => ({
   carried,
@@ -85,5 +85,27 @@ describe('quickPicks', () => {
 describe('linkedCheck', () => {
   it('compares an account with the envelopes linked to it', () => {
     expect(linkedCheck(480000, [300000, 200000])).toEqual({ envelopes: 500000, account: 480000, difference: -20000 });
+  });
+});
+
+describe('envelopeLedger', () => {
+  it('runs from what carried over, through money added, to each transaction by date', () => {
+    const lines = envelopeLedger(5000, 10000, [
+      { id: 'b', date: '2026-11-10', amount: -3000 },
+      { id: 'a', date: '2026-11-03', amount: -4500 },
+      { id: 'c', date: '2026-11-12', amount: 1200 }, // refund
+    ]);
+    expect(lines.map(l => [l.kind, l.amount, l.balance])).toEqual([
+      ['carried', 5000, 5000],
+      ['added', 10000, 15000],
+      ['transaction', -4500, 10500],
+      ['transaction', -3000, 7500],
+      ['transaction', 1200, 8700],
+    ]);
+  });
+
+  it('leaves out a zero added line, and shows money taken out as negative', () => {
+    expect(envelopeLedger(2000, 0, []).map(l => l.kind)).toEqual(['carried']);
+    expect(envelopeLedger(20000, -5000, []).at(-1)).toMatchObject({ kind: 'added', amount: -5000, balance: 15000 });
   });
 });

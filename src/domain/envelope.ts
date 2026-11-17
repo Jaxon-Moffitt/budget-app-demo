@@ -106,3 +106,34 @@ export function linkedCheck(accountBalance: Cents, envelopeBalances: Cents[]) {
   const envelopes = envelopeBalances.reduce((sum, b) => sum + b, 0);
   return { envelopes, account: accountBalance, difference: accountBalance - envelopes };
 }
+
+export type LedgerLine<T> =
+  | { kind: 'carried'; amount: Cents; balance: Cents }
+  | { kind: 'added'; amount: Cents; balance: Cents }
+  | { kind: 'transaction'; amount: Cents; balance: Cents; transaction: T };
+
+/**
+ * An envelope's month as a ledger: what carried over, the money added or
+ * taken out (stored as one net amount per month, so it has no date and
+ * comes first), then each transaction oldest first. Every line carries the
+ * running balance, so the last one is the envelope's balance.
+ */
+export function envelopeLedger<T extends { date: string; amount: Cents }>(
+  carried: Cents,
+  added: Cents,
+  transactions: T[],
+): LedgerLine<T>[] {
+  let balance = carried;
+  const lines: LedgerLine<T>[] = [{ kind: 'carried', amount: carried, balance }];
+  if (added !== 0) {
+    balance += added;
+    lines.push({ kind: 'added', amount: added, balance });
+  }
+  // Stable sort: same-day rows keep the order they came in.
+  const ordered = transactions.map((t, i) => ({ t, i })).sort((a, b) => a.t.date.localeCompare(b.t.date) || a.i - b.i);
+  for (const { t } of ordered) {
+    balance += t.amount;
+    lines.push({ kind: 'transaction', amount: t.amount, balance, transaction: t });
+  }
+  return lines;
+}

@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import { ChoiceGroup, ChoiceRow, Chooser } from '@/components/choice';
-import { FillBar } from '@/components/fill-bar';
 import { Button } from '@/components/form';
 import { IconButton } from '@/components/icon-button';
 import { Segmented } from '@/components/segmented';
@@ -18,9 +17,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { showToast } from '@/components/toast';
 import { accountDisplayName } from '@/domain/accounts';
-import { checkMove, envelopeView, linkedCheck, quickPicks, type QuickPick } from '@/domain/envelope';
+import {
+  checkMove,
+  envelopeLedger,
+  envelopeView,
+  linkedCheck,
+  quickPicks,
+  type EnvelopeView,
+  type QuickPick,
+} from '@/domain/envelope';
 import { formatCents } from '@/domain/money';
-import { formatMonth, monthName, type Month } from '@/domain/month';
+import { addMonths, formatMonth, monthName, type Month } from '@/domain/month';
 import { signedAmount } from '@/domain/transactions';
 import { FontFamilies, Spacing, STATUS_COLOR } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -187,18 +194,9 @@ function EnvelopeSheet({
           </ThemedText>
           <ThemedText themeColor="textSecondary">{v.status === 'over' ? 'overspent' : 'left'}</ThemedText>
         </View>
-        <FillBar fill={v.fill} color={theme[STATUS_COLOR[v.status]]} height={8} />
-        <View style={styles.balanceLine}>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
-            {formatCents(v.spent)} spent{v.invested !== 0 ? ` · ${formatCents(v.invested)} invested` : ''}
-            {v.received !== 0 ? ` · ${formatCents(v.received)} income` : ''}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {v.carried !== 0
-              ? `${formatCents(v.carried)} carried ${v.added < 0 ? '−' : '+'} ${formatCents(Math.abs(v.added))} added`
-              : `${formatCents(v.added)} added`}
-          </ThemedText>
-        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {formatCents(v.moneyIn)} added · {formatCents(v.moneyOut)} out in {monthName(month)}
+        </ThemedText>
       </View>
 
       <LinkedAccount view={view} envelope={envelope} />
@@ -311,7 +309,7 @@ function EnvelopeSheet({
         }
       />
 
-      <Spending envelopeId={envelope.id} month={month} />
+      <Ledger envelopeId={envelope.id} month={month} v={v} isFirstMonth={month === view.start} />
     </ScrollView>
   );
 }
@@ -370,56 +368,136 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
   );
 }
 
-function Spending({ envelopeId, month }: { envelopeId: string; month: Month }) {
+/**
+ * The month as a ledger: what carried over, money added or taken out, then
+ * every transaction in date order, each with the balance after it.
+ */
+function Ledger({
+  envelopeId,
+  month,
+  v,
+  isFirstMonth,
+}: {
+  envelopeId: string;
+  month: Month;
+  v: EnvelopeView;
+  isFirstMonth: boolean;
+}) {
   const theme = useTheme();
   const txns = useEnvelopeTransactions(envelopeId, month);
   const short = monthName(month, 'short');
+  const lines = txns.data ? envelopeLedger(v.carried, v.added, txns.data) : [];
 
   return (
     <View>
-      <ThemedText style={styles.sectionTitle}>Transactions in {monthName(month)}</ThemedText>
+      <ThemedText style={styles.sectionTitle}>Ledger for {monthName(month)}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.ledgerNote}>
+        Money in and out, with the balance after each line.
+      </ThemedText>
       {txns.isPending ? (
         <ActivityIndicator />
       ) : txns.error ? (
         <ThemedText themeColor="danger">Couldn’t load transactions: {txns.error.message}</ThemedText>
-      ) : txns.data.length === 0 ? (
-        <ThemedText themeColor="textSecondary" style={[styles.txn, { borderColor: theme.border }]}>
-          Nothing spent from this envelope yet.
-        </ThemedText>
       ) : (
-        txns.data.map(t => (
-          <Pressable
-            key={t.id}
-            accessibilityRole="button"
-            accessibilityHint="Edit or move to another envelope"
-            onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: t.openId } })}
-            style={({ pressed }) => [styles.txn, { borderColor: theme.border }, pressed && styles.dim]}>
-            <View style={styles.date}>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.caps}>
-                {short}
-              </ThemedText>
-              <ThemedText style={styles.day}>{Number(t.date.slice(8))}</ThemedText>
-            </View>
-            <View style={styles.flex}>
-              <ThemedText numberOfLines={1} style={styles.payee}>
-                {t.payee}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                {[
-                  t.isInvestment ? 'Invested' : t.isIncome ? 'Income' : t.category,
-                  t.account,
-                  t.isSplitPart ? 'Part of a split' : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </ThemedText>
-            </View>
-            <ThemedText themeColor={t.amount > 0 ? 'accent' : 'text'} style={styles.txnAmount}>
-              {formatCents(t.amount)}
+        <>
+          {lines.map(line => {
+            if (line.kind !== 'transaction') {
+              const label =
+                line.kind === 'carried'
+                  ? isFirstMonth
+                    ? 'Starting balance'
+                    : `Carried over from ${monthName(addMonths(month, -1))}`
+                  : line.amount > 0
+                    ? 'Added this month'
+                    : 'Taken out this month';
+              const detail =
+                line.kind === 'carried'
+                  ? isFirstMonth
+                    ? 'Held when the budget started'
+                    : `Left at the end of ${monthName(addMonths(month, -1))}`
+                  : 'All moves this month, together';
+              return (
+                <View key={line.kind} style={[styles.txn, { borderColor: theme.border }]}>
+                  <View style={styles.date} />
+                  <View style={styles.flex}>
+                    <ThemedText numberOfLines={1} style={styles.payee}>
+                      {label}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                      {detail}
+                    </ThemedText>
+                  </View>
+                  {line.kind === 'carried' ? (
+                    <View style={styles.amountCol}>
+                      <ThemedText style={styles.txnAmount}>{formatCents(line.amount)}</ThemedText>
+                    </View>
+                  ) : (
+                    <LedgerAmount amount={line.amount} balance={line.balance} signed />
+                  )}
+                </View>
+              );
+            }
+            const t = line.transaction;
+            return (
+              <Pressable
+                key={t.id}
+                accessibilityRole="button"
+                accessibilityHint="Edit or move to another envelope"
+                onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: t.openId } })}
+                style={({ pressed }) => [styles.txn, { borderColor: theme.border }, pressed && styles.dim]}>
+                <View style={styles.date}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.caps}>
+                    {short}
+                  </ThemedText>
+                  <ThemedText style={styles.day}>{Number(t.date.slice(8))}</ThemedText>
+                </View>
+                <View style={styles.flex}>
+                  <ThemedText numberOfLines={1} style={styles.payee}>
+                    {t.payee}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    {[
+                      t.isInvestment ? 'Invested' : t.isIncome ? 'Income' : t.amount > 0 ? 'Refund' : t.category,
+                      t.account,
+                      t.isSplitPart ? 'Part of a split' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </ThemedText>
+                </View>
+                <LedgerAmount amount={t.amount} balance={line.balance} signed />
+              </Pressable>
+            );
+          })}
+          {txns.data.length === 0 && (
+            <ThemedText type="small" themeColor="textSecondary" style={[styles.txn, { borderColor: theme.border }]}>
+              No transactions in this envelope in {monthName(month)} yet.
             </ThemedText>
-          </Pressable>
-        ))
+          )}
+          <View style={[styles.txn, styles.total, { borderColor: theme.text }]}>
+            <View style={styles.date} />
+            <ThemedText style={[styles.flex, styles.payee]}>Balance</ThemedText>
+            <ThemedText themeColor={STATUS_COLOR[v.status]} style={styles.totalAmount}>
+              {formatCents(v.balance)}
+            </ThemedText>
+          </View>
+        </>
       )}
+    </View>
+  );
+}
+
+/** A ledger amount, signed for money in and out, with the running balance under it. */
+function LedgerAmount({ amount, balance, signed }: { amount: number; balance: number; signed: boolean }) {
+  const text = signed ? `${amount > 0 ? '+' : '−'}${formatCents(Math.abs(amount))}` : formatCents(amount);
+  return (
+    <View style={styles.amountCol}>
+      <ThemedText themeColor={signed && amount > 0 ? 'accent' : 'text'} style={styles.txnAmount}>
+        {text}
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.running}>
+        {formatCents(balance)}
+      </ThemedText>
     </View>
   );
 }
@@ -495,6 +573,11 @@ const styles = StyleSheet.create({
   day: { fontSize: 17, lineHeight: 20, fontWeight: 700 },
   payee: { fontWeight: 600 },
   txnAmount: { fontWeight: 600, fontVariant: ['tabular-nums'] },
+  amountCol: { alignItems: 'flex-end' },
+  ledgerNote: { marginBottom: Spacing.two },
+  running: { fontVariant: ['tabular-nums'] },
+  total: { borderTopWidth: 1.5 },
+  totalAmount: { fontWeight: 800, fontSize: 17, fontVariant: ['tabular-nums'] },
   flex: { flex: 1 },
   dim: { opacity: 0.5 },
 });
