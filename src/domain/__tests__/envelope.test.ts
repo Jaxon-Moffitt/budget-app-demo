@@ -25,6 +25,17 @@ describe('envelopeView', () => {
     expect(envelopeView(undefined)).toMatchObject({ status: 'empty', balance: 0 });
   });
 
+  it('sums everything in and everything out, so carried + in - out is the balance', () => {
+    // $100 added and $3 interest in; $40 spent and $25 invested out.
+    const e = envelopeView(month(5000, 10000, -4000, -2500, 300));
+    expect(e).toMatchObject({ moneyIn: 10300, moneyOut: 6500 });
+    expect(e.carried + e.moneyIn - e.moneyOut).toBe(e.balance);
+    // Money taken out counts as out, and a refund bigger than the spending as in.
+    const back = envelopeView(month(20000, -5000, 1200));
+    expect(back).toMatchObject({ moneyIn: 1200, moneyOut: 5000 });
+    expect(back.carried + back.moneyIn - back.moneyOut).toBe(back.balance);
+  });
+
   it('counts investments separately from spending', () => {
     expect(envelopeView(month(0, 50000, 0, -50000))).toMatchObject({ spent: 0, invested: 50000, balance: 0 });
   });

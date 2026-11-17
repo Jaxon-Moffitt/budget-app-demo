@@ -24,6 +24,10 @@ export type EnvelopeView = {
   status: EnvelopeStatus;
   /** How full the bar is, 0 to 1. Overspent envelopes show a full bar in the over color. */
   fill: number;
+  /** Everything that came in this month: money added, income, and refunds beyond spending. */
+  moneyIn: Cents;
+  /** Everything that left this month: money taken out or moved, spending, investing. */
+  moneyOut: Cents;
 };
 
 export function envelopeView(values: EnvelopeMonth | undefined): EnvelopeView {
@@ -49,7 +53,11 @@ export function envelopeView(values: EnvelopeMonth | undefined): EnvelopeView {
     fill = funded > 0 ? Math.min(1, balance / funded) : 1;
     status = fill < LOW_SHARE ? 'low' : 'ok';
   }
-  return { carried, added, received, spent, invested, balance, status, fill };
+  // Moves are stored as one net amount per month, so money moved in and out
+  // in the same month nets out; the totals still add up to the balance.
+  const moneyIn = Math.max(0, added) + Math.max(0, received) + Math.max(0, -spent) + Math.max(0, -invested);
+  const moneyOut = Math.max(0, -added) + Math.max(0, -received) + Math.max(0, spent) + Math.max(0, invested);
+  return { carried, added, received, spent, invested, balance, status, fill, moneyIn, moneyOut };
 }
 
 /**

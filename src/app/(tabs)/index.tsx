@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FillBar } from '@/components/fill-bar';
 import { Button } from '@/components/form';
 import { IconButton } from '@/components/icon-button';
 import { Segmented } from '@/components/segmented';
@@ -272,17 +271,15 @@ function Stat({
   );
 }
 
-/** The second line of an envelope row: this month's money in and out. */
+/**
+ * The second line of an envelope row: this month's money in (added, moved
+ * in, income) and out (spent, moved out, invested), each as one total.
+ */
 function detailFor(v: EnvelopeView): string {
-  if (v.status === 'over') return `Overspent · tap to cover`;
-  const parts = [
-    v.added !== 0 ? `${v.added > 0 ? '+' : '−'}${formatCents(Math.abs(v.added))} added` : null,
-    v.received !== 0 ? `+${formatCents(v.received)} income` : null,
-    v.spent !== 0 ? `${formatCents(v.spent)} spent` : null,
-    v.invested !== 0 ? `${formatCents(v.invested)} invested` : null,
-  ].filter(Boolean);
-  if (parts.length > 0) return parts.join(' · ');
-  return v.balance === 0 ? 'Nothing added yet' : 'Nothing added or spent this month';
+  if (v.moneyIn === 0 && v.moneyOut === 0) {
+    return v.balance === 0 ? 'Nothing added yet' : 'Nothing in or out this month';
+  }
+  return `${formatCents(v.moneyIn)} added · ${formatCents(v.moneyOut)} out`;
 }
 
 function EnvelopeRow({
@@ -298,7 +295,6 @@ function EnvelopeRow({
   border: string;
   onPress(): void;
 }) {
-  const theme = useTheme();
   const color = STATUS_COLOR[v.status];
   const detail = detailFor(v);
   return (
@@ -325,7 +321,6 @@ function EnvelopeRow({
           {formatCents(v.balance)}
         </ThemedText>
       </View>
-      <FillBar fill={v.fill} color={theme[color]} />
     </Pressable>
   );
 }
