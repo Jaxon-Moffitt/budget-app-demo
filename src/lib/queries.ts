@@ -123,6 +123,10 @@ export type Household = {
   budgetStart: string | null;
   /** How often paychecks come, for splitting the monthly budget. */
   paySchedule: PaySchedule;
+  /** Expected income per month, entered by hand; planning only. */
+  expectedIncome: Cents | null;
+  /** Takes what the expected income leaves after every envelope's target. */
+  leftoverEnvelopeId: string | null;
 };
 
 const PAGE_SIZE = 100;
@@ -135,7 +139,7 @@ export function useHousehold(enabled: boolean) {
     async queryFn(): Promise<Household | null> {
       const { data, error } = await supabase
         .from('households')
-        .select('id, name, budget_start, pay_schedule, household_members(count)')
+        .select('id, name, budget_start, pay_schedule, expected_income, leftover_envelope_id, household_members(count)')
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
@@ -146,6 +150,8 @@ export function useHousehold(enabled: boolean) {
         memberCount: members?.count ?? 0,
         budgetStart: data.budget_start,
         paySchedule: (data.pay_schedule ?? 'twice_monthly') as PaySchedule,
+        expectedIncome: data.expected_income ?? null,
+        leftoverEnvelopeId: data.leftover_envelope_id ?? null,
       };
     },
   });

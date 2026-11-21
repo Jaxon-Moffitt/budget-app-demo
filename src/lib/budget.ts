@@ -115,11 +115,18 @@ function useInvalidateBudget() {
     ]);
 }
 
-export function useSetPaySchedule() {
+/** The household's side of the monthly budget: pay schedule, expected income, leftover envelope. */
+export function useUpdateBudgetPlan() {
   const invalidate = useInvalidateBudget();
   return useMutation({
-    async mutationFn({ householdId, schedule }: { householdId: string; schedule: PaySchedule }) {
-      const { error } = await supabase.from('households').update({ pay_schedule: schedule }).eq('id', householdId);
+    async mutationFn({
+      householdId,
+      changes,
+    }: {
+      householdId: string;
+      changes: { pay_schedule?: PaySchedule; expected_income?: Cents | null; leftover_envelope_id?: string | null };
+    }) {
+      const { error } = await supabase.from('households').update(changes).eq('id', householdId);
       if (error) throw error;
     },
     onSuccess: invalidate,

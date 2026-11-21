@@ -19,6 +19,7 @@ import { isHidden } from '@/domain/categories';
 import { envelopeView, type EnvelopeView } from '@/domain/envelope';
 import { formatCents } from '@/domain/money';
 import { addMonths, formatMonth, monthName, type Month } from '@/domain/month';
+import { fillPlan, leftover, withLeftover } from '@/domain/paychecks';
 import { BottomTabInset, Spacing, STATUS_COLOR } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { currentMonth, useBudget, useSetBudgetStart, type BudgetView } from '@/lib/budget';
@@ -106,11 +107,19 @@ function BudgetMonthView({
   const { month: data, groups } = view;
   const latest = addMonths(currentMonth(), MONTHS_AHEAD);
 
-  const targets = groups
-    .flatMap(g => g.envelopes.filter(e => !isHidden(g, e)))
-    .filter(e => (e.target ?? 0) > 0);
-  // What the monthly budget still needs this month, for "Fill from budget".
-  const stillNeeded = targets.reduce((s, e) => s + Math.max(0, (e.target ?? 0) - (data.envelopes[e.id]?.assigned ?? 0)), 0);
+  const visible = groups.flatMap(g => g.envelopes.filter(e => !isHidden(g, e)));
+  const targets = visible.filter(e => (e.target ?? 0) > 0);
+  // What the monthly budget (plus any leftover for its envelope) still needs
+  // this month, for "Fill from budget".
+  const stillNeeded = fillPlan(
+    withLeftover(
+      visible.map(e => ({ id: e.id, target: e.target, assigned: data.envelopes[e.id]?.assigned ?? 0 })),
+      household.leftoverEnvelopeId,
+      leftover(household.expectedIncome, visible.map(e => e.target)),
+    ),
+    'month',
+    household.paySchedule,
+  ).reduce((s, l) => s + l.add, 0);
   const overspent = view.envelopes.filter(e => (data.envelopes[e.id]?.balance ?? 0) < 0);
 
   async function refresh() {
@@ -152,7 +161,7 @@ function BudgetMonthView({
         </ThemedText>
       )}
 
-      {targets.length === 0 ? (
+      {targets.length === 0 && stillNeeded === 0 ? (
         <Button variant="plain" title="Set up a monthly budget" onPress={() => router.push('/budget-plan')} />
       ) : stillNeeded > 0 ? (
         <Button

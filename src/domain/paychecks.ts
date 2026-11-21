@@ -48,3 +48,32 @@ export function fillPlan(envelopes: FillEnvelope[], mode: 'paycheck' | 'month', 
   }
   return lines;
 }
+
+/** A paycheck amount as a monthly one, and back: every-2-weeks pay is 26 paychecks over 12 months. */
+export function monthlyFromPaycheck(paycheck: Cents, schedule: PaySchedule): Cents {
+  const perYear = PAY_SCHEDULES.find(s => s.value === schedule)?.perYear ?? 12;
+  return Math.round((paycheck * perYear) / 12);
+}
+
+/**
+ * What the expected monthly income leaves after every envelope's monthly
+ * target. Negative when the budget asks for more than the income.
+ */
+export function leftover(expectedIncome: Cents | null, targets: (Cents | null)[]): Cents | null {
+  if (expectedIncome === null) return null;
+  return expectedIncome - targets.reduce<number>((sum, t) => sum + (t ?? 0), 0);
+}
+
+/**
+ * The envelopes with the leftover added to one envelope's target, so "Fill
+ * from budget" gives it its share of the rest of each paycheck. A budget
+ * that's over the income adds nothing.
+ */
+export function withLeftover<E extends { id: string; target: Cents | null }>(
+  envelopes: E[],
+  leftoverEnvelopeId: string | null,
+  amount: Cents | null,
+): E[] {
+  if (!leftoverEnvelopeId || !amount || amount <= 0) return envelopes;
+  return envelopes.map(e => (e.id === leftoverEnvelopeId ? { ...e, target: (e.target ?? 0) + amount } : e));
+}

@@ -356,7 +356,7 @@ export function seed(now: Date = new Date()): Tables {
   }));
 
   return {
-    households: [{ id: H, name: 'Demo household', budget_start: previous, pay_schedule: 'twice_monthly' }],
+    households: [{ id: H, name: 'Demo household', budget_start: previous, pay_schedule: 'twice_monthly', expected_income: 430000, leftover_envelope_id: null }],
     household_members: [
       { household_id: H, user_id: 'demo-user' },
       { household_id: H, user_id: 'demo-partner' },

@@ -11,7 +11,7 @@ import { showToast } from '@/components/toast';
 import { isHidden } from '@/domain/categories';
 import { formatCents } from '@/domain/money';
 import { monthName, type Month } from '@/domain/month';
-import { fillPlan, payScheduleLabel } from '@/domain/paychecks';
+import { fillPlan, leftover, payScheduleLabel, withLeftover } from '@/domain/paychecks';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { currentMonth, useBudget, useSetAssigned } from '@/lib/budget';
@@ -43,16 +43,24 @@ export default function FillScreen() {
     [view],
   );
   const withTargets = envelopes.filter(e => (e.target ?? 0) > 0);
+  // What the expected income leaves after the budget goes to the leftover
+  // envelope, on top of its own monthly amount.
+  const left = leftover(household?.expectedIncome ?? null, envelopes.map(e => e.target));
+  const leftoverId = envelopes.some(e => e.id === household?.leftoverEnvelopeId) ? household!.leftoverEnvelopeId : null;
   const plan = useMemo(
     () =>
       view
         ? fillPlan(
-            envelopes.map(e => ({ id: e.id, target: e.target, assigned: view.month.envelopes[e.id]?.assigned ?? 0 })),
+            withLeftover(
+              envelopes.map(e => ({ id: e.id, target: e.target, assigned: view.month.envelopes[e.id]?.assigned ?? 0 })),
+              leftoverId,
+              left,
+            ),
             mode,
             schedule,
           )
         : [],
-    [envelopes, view, mode, schedule],
+    [envelopes, view, mode, schedule, leftoverId, left],
   );
   const total = plan.reduce((s, l) => s + l.add, 0);
   const ready = view?.month.readyToAssign ?? 0;
@@ -90,7 +98,7 @@ export default function FillScreen() {
 
         {budget.isPending || !view ? (
           <ActivityIndicator />
-        ) : withTargets.length === 0 ? (
+        ) : withTargets.length === 0 && !(leftoverId && left !== null && left > 0) ? (
           <>
             <ThemedText themeColor="textSecondary">
               No monthly budget yet. Give your envelopes monthly amounts, and this fills them when a paycheck
@@ -124,6 +132,7 @@ export default function FillScreen() {
                         </ThemedText>
                         <ThemedText type="small" themeColor="textSecondary">
                           {formatCents(l.assigned + l.add)} of {formatCents(l.target)} after this
+                          {l.id === leftoverId && left !== null && left > 0 ? ' · includes the leftover' : ''}
                         </ThemedText>
                       </View>
                       <ThemedText themeColor="accent" style={styles.amount}>
