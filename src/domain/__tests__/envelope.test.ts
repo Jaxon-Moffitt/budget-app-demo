@@ -109,3 +109,36 @@ describe('envelopeLedger', () => {
     expect(envelopeLedger(20000, -5000, []).at(-1)).toMatchObject({ kind: 'added', amount: -5000, balance: 15000 });
   });
 });
+
+describe('envelopeLedger with dated changes', () => {
+  it('puts money changes among transactions by date, changes first on the same day', () => {
+    const lines = envelopeLedger(
+      5000,
+      12000,
+      [
+        { id: 't1', date: '2026-11-03', amount: -4500 },
+        { id: 't2', date: '2026-11-15', amount: -3000 },
+      ],
+      [
+        { id: 'c1', date: '2026-11-01', amount: 6000 },
+        { id: 'c2', date: '2026-11-15', amount: 6000 },
+      ],
+    );
+    expect(lines.map(l => [l.kind, l.amount, l.balance])).toEqual([
+      ['carried', 5000, 5000],
+      ['change', 6000, 11000],
+      ['transaction', -4500, 6500],
+      ['change', 6000, 12500],
+      ['transaction', -3000, 9500],
+    ]);
+  });
+
+  it('shows what the dated changes don\'t explain as one undated line', () => {
+    const lines = envelopeLedger(0, 10000, [], [{ id: 'c1', date: '2026-11-20', amount: 2500 }]);
+    expect(lines.map(l => [l.kind, l.amount, l.balance])).toEqual([
+      ['carried', 0, 0],
+      ['added', 7500, 7500],
+      ['change', 2500, 10000],
+    ]);
+  });
+});

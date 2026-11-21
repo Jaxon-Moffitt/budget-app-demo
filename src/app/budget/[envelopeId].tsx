@@ -175,7 +175,7 @@ function Editor({
           keyboardType="decimal-pad"
         />
         <ThemedText type="small" themeColor="textSecondary">
-          What this envelope usually gets each month. “Fill from targets” uses it for a new month.
+          What this envelope gets each month: its line in the monthly budget. “Fill from budget” splits it across paychecks.
         </ThemedText>
 
         <ChoiceGroup label="Money kept in">

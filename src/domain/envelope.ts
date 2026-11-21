@@ -107,33 +107,43 @@ export function linkedCheck(accountBalance: Cents, envelopeBalances: Cents[]) {
   return { envelopes, account: accountBalance, difference: accountBalance - envelopes };
 }
 
-export type LedgerLine<T> =
+export type LedgerLine<T, C = never> =
   | { kind: 'carried'; amount: Cents; balance: Cents }
   | { kind: 'added'; amount: Cents; balance: Cents }
+  | { kind: 'change'; amount: Cents; balance: Cents; change: C }
   | { kind: 'transaction'; amount: Cents; balance: Cents; transaction: T };
 
 /**
- * An envelope's month as a ledger: what carried over, the money added or
- * taken out (stored as one net amount per month, so it has no date and
- * comes first), then each transaction oldest first. Every line carries the
- * running balance, so the last one is the envelope's balance.
+ * An envelope's month as a ledger: what carried over, then every dated
+ * change of the money in it (added, taken out, moved) and every transaction,
+ * oldest first, with money changes before transactions on the same day.
+ * Every line carries the running balance, so the last one is the balance.
+ *
+ * `added` is the month's net assigned amount. Whatever of it the dated
+ * changes don't explain (changes made before history was recorded) comes
+ * right after the carried line, undated.
  */
-export function envelopeLedger<T extends { date: string; amount: Cents }>(
+export function envelopeLedger<T extends { date: string; amount: Cents }, C extends { date: string; amount: Cents } = never>(
   carried: Cents,
   added: Cents,
   transactions: T[],
-): LedgerLine<T>[] {
+  changes: C[] = [],
+): LedgerLine<T, C>[] {
   let balance = carried;
-  const lines: LedgerLine<T>[] = [{ kind: 'carried', amount: carried, balance }];
-  if (added !== 0) {
-    balance += added;
-    lines.push({ kind: 'added', amount: added, balance });
+  const lines: LedgerLine<T, C>[] = [{ kind: 'carried', amount: carried, balance }];
+  const unrecorded = added - changes.reduce((sum, c) => sum + c.amount, 0);
+  if (unrecorded !== 0) {
+    balance += unrecorded;
+    lines.push({ kind: 'added', amount: unrecorded, balance });
   }
-  // Stable sort: same-day rows keep the order they came in.
-  const ordered = transactions.map((t, i) => ({ t, i })).sort((a, b) => a.t.date.localeCompare(b.t.date) || a.i - b.i);
-  for (const { t } of ordered) {
-    balance += t.amount;
-    lines.push({ kind: 'transaction', amount: t.amount, balance, transaction: t });
+  // Stable: same-day items keep the order they came in, changes first.
+  const items = [
+    ...changes.map((c, i) => ({ date: c.date, rank: 0, i, line: { kind: 'change' as const, amount: c.amount, change: c } })),
+    ...transactions.map((t, i) => ({ date: t.date, rank: 1, i, line: { kind: 'transaction' as const, amount: t.amount, transaction: t } })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.rank - b.rank || a.i - b.i);
+  for (const { line } of items) {
+    balance += line.amount;
+    lines.push({ ...line, balance } as LedgerLine<T, C>);
   }
   return lines;
 }

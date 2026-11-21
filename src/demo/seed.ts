@@ -17,6 +17,7 @@ export type Tables = {
   payees: Row[];
   transactions: Row[];
   budget_months: Row[];
+  budget_changes: Row[];
   rules: Row[];
   sync_runs: Row[];
 };
@@ -301,6 +302,39 @@ export function seed(now: Date = new Date()): Tables {
     ...(happened(day(current, 2)) ? { ef: 30000, travel: 15000 } : {}),
   });
 
+  // When that money was added: savings on the 2nd with their transfers, the
+  // rest half with each paycheck (the 1st and the 15th), as "Fill from
+  // budget" would. Changes made together share a batch.
+  const budgetChanges: Row[] = [];
+  const batches = new Map<string, number>();
+  const change = (month: Month, d: number, envelope_id: string, amount: number) => {
+    const date = day(month, d);
+    if (amount === 0 || !happened(date)) return 0;
+    if (!batches.has(date)) batches.set(date, batches.size + 1);
+    budgetChanges.push({
+      id: `bc${budgetChanges.length + 1}`,
+      household_id: H,
+      month,
+      envelope_id,
+      amount,
+      batch: batches.get(date),
+      changed_at: `${date}T17:00:00Z`,
+      changed_by: 'demo-user',
+    });
+    return amount;
+  };
+  for (const b of budgetMonths) {
+    if (b.envelope_id === 'ef' || b.envelope_id === 'travel') {
+      change(b.month, 2, b.envelope_id, b.assigned);
+      continue;
+    }
+    const first = change(b.month, 1, b.envelope_id, Math.ceil(b.assigned / 2));
+    // Before the 15th, the second half hasn't been added yet: the month's
+    // assigned amount is only what's been added so far.
+    const second = change(b.month, 15, b.envelope_id, b.assigned - first);
+    if (second === 0 && first !== b.assigned) b.assigned = first;
+  }
+
   const rules = [
     ['PAYROLL', 'in', null, 'income', null, null],
     ['NETFLIX', 'out', null, 'spending', 'subs', 'streaming'],
@@ -322,7 +356,7 @@ export function seed(now: Date = new Date()): Tables {
   }));
 
   return {
-    households: [{ id: H, name: 'Demo household', budget_start: previous }],
+    households: [{ id: H, name: 'Demo household', budget_start: previous, pay_schedule: 'twice_monthly' }],
     household_members: [
       { household_id: H, user_id: 'demo-user' },
       { household_id: H, user_id: 'demo-partner' },
@@ -334,6 +368,7 @@ export function seed(now: Date = new Date()): Tables {
     payees,
     transactions,
     budget_months: budgetMonths,
+    budget_changes: budgetChanges,
     rules,
     sync_runs: [],
   };

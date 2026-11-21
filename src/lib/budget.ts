@@ -5,6 +5,7 @@ import { buildBudgetInput, type ActivityRow, type AssignedRow } from '@/domain/b
 import { isHidden } from '@/domain/categories';
 import type { Cents } from '@/domain/money';
 import { localDate, type Month } from '@/domain/month';
+import type { PaySchedule } from '@/domain/paychecks';
 import { useEnvelopes, useHousehold, type Envelope, type EnvelopeGroup } from '@/lib/queries';
 import { supabase } from '@/lib/supabase';
 
@@ -112,6 +113,90 @@ function useInvalidateBudget() {
       queryClient.invalidateQueries({ queryKey: ['envelopes'] }),
       queryClient.invalidateQueries({ queryKey: ['household'] }),
     ]);
+}
+
+export function useSetPaySchedule() {
+  const invalidate = useInvalidateBudget();
+  return useMutation({
+    async mutationFn({ householdId, schedule }: { householdId: string; schedule: PaySchedule }) {
+      const { error } = await supabase.from('households').update({ pay_schedule: schedule }).eq('id', householdId);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** Saves several envelopes' monthly targets (the monthly budget) at once. */
+export function useSetTargets() {
+  const invalidate = useInvalidateBudget();
+  return useMutation({
+    async mutationFn(targets: { envelopeId: string; target: Cents | null }[]) {
+      const results = await Promise.all(
+        targets.map(t => supabase.from('envelopes').update({ target: t.target }).eq('id', t.envelopeId)),
+      );
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
+/** One dated change of an envelope's money, from budget_changes. */
+export type BudgetChange = {
+  id: string;
+  /** Local "YYYY-MM-DD" it happened on. */
+  date: string;
+  /** When, for ordering changes on the same day. */
+  at: string;
+  amount: Cents;
+  /** The envelope the money came from or went to; null for Ready to assign. */
+  otherEnvelopeId: string | null;
+  /** Moved to or from more than one envelope at once. */
+  manyOthers: boolean;
+};
+
+/**
+ * When money was added to or taken out of one envelope in one month, oldest
+ * first. Changes made together (a move between envelopes) share a batch, so
+ * the other side of a move is the change in the same batch going the other
+ * way. Keyed under 'budget' so saving or Realtime refreshes it.
+ */
+export function useBudgetChanges(envelopeId: string, month: Month) {
+  return useQuery({
+    queryKey: ['budget', 'changes', envelopeId, month],
+    async queryFn(): Promise<BudgetChange[]> {
+      const { data, error } = await supabase
+        .from('budget_changes')
+        .select('id, amount, batch, changed_at')
+        .eq('envelope_id', envelopeId)
+        .eq('month', month)
+        .order('changed_at')
+        .order('id');
+      if (error) throw error;
+      const rows = data as { id: string; amount: Cents; batch: number; changed_at: string }[];
+      if (rows.length === 0) return [];
+
+      const others = await supabase
+        .from('budget_changes')
+        .select('envelope_id, amount, batch')
+        .in('batch', [...new Set(rows.map(r => r.batch))])
+        .neq('envelope_id', envelopeId);
+      if (others.error) throw others.error;
+      const partners = others.data as { envelope_id: string; amount: Cents; batch: number }[];
+
+      return rows.map(r => {
+        const opposite = partners.filter(p => p.batch === r.batch && Math.sign(p.amount) === -Math.sign(r.amount));
+        return {
+          id: r.id,
+          date: localDate(new Date(r.changed_at)),
+          at: r.changed_at,
+          amount: r.amount,
+          otherEnvelopeId: opposite.length === 1 ? opposite[0].envelope_id : null,
+          manyOthers: opposite.length > 1,
+        };
+      });
+    },
+  });
 }
 
 export function useSetBudgetStart() {

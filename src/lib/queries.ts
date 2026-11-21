@@ -5,6 +5,7 @@ import type { AccountType } from '@/domain/accounts';
 import type { Cents } from '@/domain/money';
 import { addMonths } from '@/domain/month';
 import { TRANSFER_WINDOW_DAYS, type TransactionKind } from '@/domain/transactions';
+import type { PaySchedule } from '@/domain/paychecks';
 import { supabase } from '@/lib/supabase';
 
 export type Account = {
@@ -120,6 +121,8 @@ export type Household = {
   memberCount: number;
   /** First budgeted month, "YYYY-MM", or null until budgeting is set up. */
   budgetStart: string | null;
+  /** How often paychecks come, for splitting the monthly budget. */
+  paySchedule: PaySchedule;
 };
 
 const PAGE_SIZE = 100;
@@ -132,7 +135,7 @@ export function useHousehold(enabled: boolean) {
     async queryFn(): Promise<Household | null> {
       const { data, error } = await supabase
         .from('households')
-        .select('id, name, budget_start, household_members(count)')
+        .select('id, name, budget_start, pay_schedule, household_members(count)')
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
@@ -142,6 +145,7 @@ export function useHousehold(enabled: boolean) {
         name: data.name,
         memberCount: members?.count ?? 0,
         budgetStart: data.budget_start,
+        paySchedule: (data.pay_schedule ?? 'twice_monthly') as PaySchedule,
       };
     },
   });

@@ -31,7 +31,7 @@ import { addMonths, formatMonth, monthName, type Month } from '@/domain/month';
 import { signedAmount } from '@/domain/transactions';
 import { FontFamilies, Spacing, STATUS_COLOR } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useBudget, useSetAssigned, useUpdateEnvelopeMoney, type BudgetView } from '@/lib/budget';
+import { useBudget, useBudgetChanges, useSetAssigned, useUpdateEnvelopeMoney, type BudgetView } from '@/lib/budget';
 import { useAccounts, useEnvelopeTransactions, type Envelope, type EnvelopeGroup } from '@/lib/queries';
 
 type Mode = 'add' | 'out' | 'start';
@@ -309,7 +309,13 @@ function EnvelopeSheet({
         }
       />
 
-      <Ledger envelopeId={envelope.id} month={month} v={v} isFirstMonth={month === view.start} />
+      <Ledger
+        envelopeId={envelope.id}
+        month={month}
+        v={v}
+        isFirstMonth={month === view.start}
+        names={new Map(view.envelopes.map(e => [e.id, e.name]))}
+      />
     </ScrollView>
   );
 }
@@ -369,24 +375,32 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
 }
 
 /**
- * The month as a ledger: what carried over, money added or taken out, then
- * every transaction in date order, each with the balance after it.
+ * The month as a ledger: what carried over, then every time money was
+ * added, taken out or moved, and every transaction, in date order, each
+ * with the balance after it.
  */
 function Ledger({
   envelopeId,
   month,
   v,
   isFirstMonth,
+  names,
 }: {
   envelopeId: string;
   month: Month;
   v: EnvelopeView;
   isFirstMonth: boolean;
+  /** Envelope names by id, for "Moved from Groceries". */
+  names: Map<string, string>;
 }) {
   const theme = useTheme();
   const txns = useEnvelopeTransactions(envelopeId, month);
+  const changes = useBudgetChanges(envelopeId, month);
   const short = monthName(month, 'short');
-  const lines = txns.data ? envelopeLedger(v.carried, v.added, txns.data) : [];
+  // If the history can't load, the ledger still adds up: every move shows
+  // as one undated line, as before history was kept.
+  const lines = txns.data ? envelopeLedger(v.carried, v.added, txns.data, changes.data ?? []) : [];
+  const hasHistory = (changes.data?.length ?? 0) > 0;
 
   return (
     <View>
@@ -394,28 +408,69 @@ function Ledger({
       <ThemedText type="small" themeColor="textSecondary" style={styles.ledgerNote}>
         Money in and out, with the balance after each line.
       </ThemedText>
-      {txns.isPending ? (
+      {txns.isPending || changes.isPending ? (
         <ActivityIndicator />
       ) : txns.error ? (
         <ThemedText themeColor="danger">Couldn’t load transactions: {txns.error.message}</ThemedText>
       ) : (
         <>
           {lines.map(line => {
+            if (line.kind === 'change') {
+              const c = line.change;
+              const other = c.otherEnvelopeId ? (names.get(c.otherEnvelopeId) ?? 'another envelope') : null;
+              const label =
+                c.amount > 0
+                  ? other
+                    ? `Moved from ${other}`
+                    : c.manyOthers
+                      ? 'Moved from other envelopes'
+                      : 'Added from Ready to assign'
+                  : other
+                    ? `Moved to ${other}`
+                    : c.manyOthers
+                      ? 'Moved to other envelopes'
+                      : 'Back to Ready to assign';
+              return (
+                <View key={c.id} style={[styles.txn, { borderColor: theme.border }]}>
+                  <View style={styles.date}>
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.caps}>
+                      {monthName(c.date.slice(0, 7), 'short')}
+                    </ThemedText>
+                    <ThemedText style={styles.day}>{Number(c.date.slice(8))}</ThemedText>
+                  </View>
+                  <View style={styles.flex}>
+                    <ThemedText numberOfLines={1} style={styles.payee}>
+                      {label}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                      {c.amount > 0 ? 'Money added' : 'Money taken out'} · {formatTime(c.at)}
+                    </ThemedText>
+                  </View>
+                  <LedgerAmount amount={line.amount} balance={line.balance} signed />
+                </View>
+              );
+            }
             if (line.kind !== 'transaction') {
               const label =
                 line.kind === 'carried'
                   ? isFirstMonth
                     ? 'Starting balance'
                     : `Carried over from ${monthName(addMonths(month, -1))}`
-                  : line.amount > 0
-                    ? 'Added this month'
-                    : 'Taken out this month';
+                  : hasHistory
+                    ? line.amount > 0
+                      ? 'Added earlier'
+                      : 'Taken out earlier'
+                    : line.amount > 0
+                      ? 'Added this month'
+                      : 'Taken out this month';
               const detail =
                 line.kind === 'carried'
                   ? isFirstMonth
                     ? 'Held when the budget started'
                     : `Left at the end of ${monthName(addMonths(month, -1))}`
-                  : 'All moves this month, together';
+                  : hasHistory
+                    ? 'Before dates were kept'
+                    : 'All moves this month, together';
               return (
                 <View key={line.kind} style={[styles.txn, { borderColor: theme.border }]}>
                   <View style={styles.date} />
@@ -485,6 +540,11 @@ function Ledger({
       )}
     </View>
   );
+}
+
+/** "9:41 AM", in the phone's own format. */
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 /** A ledger amount, signed for money in and out, with the running balance under it. */

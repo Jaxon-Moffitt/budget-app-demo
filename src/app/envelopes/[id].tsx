@@ -146,7 +146,7 @@ function EnvelopeForm({
             <View style={styles.flex}>
               <ThemedText>Hidden</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Left out of pickers and “Fill from targets”. It still shows on the Budget tab in any
+                Left out of pickers and “Fill from budget”. It still shows on the Budget tab in any
                 month it holds money.
               </ThemedText>
             </View>

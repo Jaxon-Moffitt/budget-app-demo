@@ -90,6 +90,7 @@ export default function SettingsScreen() {
               <ThemedText type="smallBold" themeColor="textSecondary">
                 Budget
               </ThemedText>
+              <Button variant="plain" title="Monthly budget and pay schedule" onPress={() => router.push('/budget-plan')} />
               <Button variant="plain" title="Manage envelopes" onPress={() => router.push('/envelopes')} />
               <Button variant="plain" title="Manage categories" onPress={() => router.push('/categories')} />
               <Button variant="plain" title="Rules" onPress={() => router.push('/rules')} />

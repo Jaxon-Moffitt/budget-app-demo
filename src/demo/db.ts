@@ -13,6 +13,8 @@ type Result = { data: any; error: { message: string } | null; count?: number };
 
 let tables: Tables = seed();
 let nextId = 1;
+/** Changes saved together share a batch, like the database's transaction id. */
+let nextBatch = 1000;
 const newId = () => `demo-${Date.now().toString(36)}-${nextId++}`;
 
 /** Starts the demo over from fresh dummy data (also used by tests). */
@@ -275,7 +277,25 @@ class Query implements PromiseLike<Result> {
     return tables[this.table] as Row[];
   }
 
+  /** Like the budget_months trigger: records every change to an assigned amount. */
   private run(): unknown {
+    if (this.table !== 'budget_months') return this.runInner();
+    const key = (b: Row) => `${b.envelope_id}|${b.month}`;
+    const before = new Map(tables.budget_months.map(b => [key(b), b.assigned as number]));
+    const out = this.runInner();
+    const after = new Map(tables.budget_months.map(b => [key(b), b.assigned as number]));
+    const batch = nextBatch++;
+    const at = new Date().toISOString();
+    for (const k of new Set([...before.keys(), ...after.keys()])) {
+      const amount = (after.get(k) ?? 0) - (before.get(k) ?? 0);
+      const [envelope_id, month] = k.split('|');
+      if (amount === 0 || !tables.envelopes.some(e => e.id === envelope_id)) continue;
+      tables.budget_changes.push({ id: newId(), household_id: 'h1', month, envelope_id, amount, batch, changed_at: at, changed_by: 'demo-user' });
+    }
+    return out;
+  }
+
+  private runInner(): unknown {
     switch (this.mode.kind) {
       case 'select':
         return this.runSelect(this.mode.fields);
@@ -432,6 +452,7 @@ function deleteRow(table: keyof Tables, row: Row) {
   }
   if (table === 'envelopes') {
     tables.budget_months = tables.budget_months.filter(b => b.envelope_id !== row.id);
+    tables.budget_changes = tables.budget_changes.filter(b => b.envelope_id !== row.id);
     tables.rules = tables.rules.filter(r => r.envelope_id !== row.id);
     for (const c of tables.categories) if (c.default_envelope_id === row.id) c.default_envelope_id = null;
   }

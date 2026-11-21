@@ -21,7 +21,7 @@ import { formatCents } from '@/domain/money';
 import { addMonths, formatMonth, monthName, type Month } from '@/domain/month';
 import { BottomTabInset, Spacing, STATUS_COLOR } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { currentMonth, useBudget, useSetAssigned, useSetBudgetStart, type BudgetView } from '@/lib/budget';
+import { currentMonth, useBudget, useSetBudgetStart, type BudgetView } from '@/lib/budget';
 import type { Household } from '@/lib/queries';
 
 /** Planning ahead is allowed a couple of months past today. */
@@ -102,7 +102,6 @@ function BudgetMonthView({
   onRefresh(): Promise<unknown>;
 }) {
   const theme = useTheme();
-  const setAssigned = useSetAssigned();
   const [refreshing, setRefreshing] = useState(false);
   const { month: data, groups } = view;
   const latest = addMonths(currentMonth(), MONTHS_AHEAD);
@@ -110,21 +109,14 @@ function BudgetMonthView({
   const targets = groups
     .flatMap(g => g.envelopes.filter(e => !isHidden(g, e)))
     .filter(e => (e.target ?? 0) > 0);
-  const nothingAssigned = Object.values(data.envelopes).every(e => e.assigned === 0);
+  // What the monthly budget still needs this month, for "Fill from budget".
+  const stillNeeded = targets.reduce((s, e) => s + Math.max(0, (e.target ?? 0) - (data.envelopes[e.id]?.assigned ?? 0)), 0);
   const overspent = view.envelopes.filter(e => (data.envelopes[e.id]?.balance ?? 0) < 0);
 
   async function refresh() {
     setRefreshing(true);
     await onRefresh().catch(() => {});
     setRefreshing(false);
-  }
-
-  function fillFromTargets() {
-    setAssigned.mutate({
-      householdId: household.id,
-      month,
-      amounts: targets.map(e => ({ envelopeId: e.id, assigned: e.target as number })),
-    });
   }
 
   const open = (envelopeId: string) =>
@@ -160,17 +152,15 @@ function BudgetMonthView({
         </ThemedText>
       )}
 
-      {nothingAssigned && targets.length > 0 && (
+      {targets.length === 0 ? (
+        <Button variant="plain" title="Set up a monthly budget" onPress={() => router.push('/budget-plan')} />
+      ) : stillNeeded > 0 ? (
         <Button
           variant="tonal"
-          title={`Fill from targets (${formatCents(targets.reduce((s, e) => s + (e.target ?? 0), 0))})`}
-          loading={setAssigned.isPending}
-          onPress={fillFromTargets}
+          title={`Fill from budget · ${formatCents(stillNeeded)} to go`}
+          onPress={() => router.push({ pathname: '/budget/fill', params: { month } })}
         />
-      )}
-      {setAssigned.error && (
-        <ThemedText themeColor="danger">Couldn’t save: {setAssigned.error.message}</ThemedText>
-      )}
+      ) : null}
 
       {groups.map(group => {
         const rows = group.envelopes.map(e => ({ envelope: e, v: envelopeView(data.envelopes[e.id]) }));

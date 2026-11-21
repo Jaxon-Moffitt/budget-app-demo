@@ -150,6 +150,8 @@ function RootNavigator() {
           <Stack.Screen name="budget-start" options={modal} />
           <Stack.Screen name="rules/[id]" options={modal} />
           <Stack.Screen name="analytics/category" options={modal} />
+          <Stack.Screen name="budget/fill" options={modal} />
+          <Stack.Screen name="budget-plan" options={modal} />
         </Stack.Protected>
         <Stack.Protected guard={needsHousehold}>
           <Stack.Screen name="create-household" />
