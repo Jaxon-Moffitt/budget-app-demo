@@ -116,6 +116,7 @@ function RootNavigator() {
           <Stack.Screen name="add-partner" options={modal} />
           <Stack.Screen name="account/new" options={modal} />
           <Stack.Screen name="account/[id]" options={modal} />
+          <Stack.Screen name="account/history" options={modal} />
           <Stack.Screen name="transaction/new" options={modal} />
           <Stack.Screen name="transaction/[id]" options={modal} />
           <Stack.Screen name="transaction/transfer" options={modal} />

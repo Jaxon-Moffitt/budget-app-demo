@@ -150,8 +150,8 @@ function AccountRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityHint="Edit nickname, type and budget"
-      onPress={() => router.push({ pathname: '/account/[id]', params: { id: account.id } })}
+      accessibilityHint="See its transactions"
+      onPress={() => router.push({ pathname: '/account/history', params: { id: account.id } })}
       style={({ pressed }) => [
         styles.row,
         { backgroundColor: background },

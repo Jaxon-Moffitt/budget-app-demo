@@ -242,9 +242,10 @@ export function useUpdateAccount() {
  * Newest first, a page at a time. Split children are left out until splits
  * exist. "uncategorized" skips off-budget accounts, which don't use categories.
  */
-export function useTransactions(filter: TransactionFilter = 'all', since: string | null = null) {
+/** `accountId` narrows the list to one account (its history on the Accounts tab). */
+export function useTransactions(filter: TransactionFilter = 'all', since: string | null = null, accountId: string | null = null) {
   return useInfiniteQuery({
-    queryKey: ['transactions', 'list', filter, since],
+    queryKey: ['transactions', 'list', filter, since, accountId],
     initialPageParam: 0,
     async queryFn({ pageParam }) {
       let query = supabase
@@ -256,6 +257,7 @@ export function useTransactions(filter: TransactionFilter = 'all', since: string
       // Rows before the budget's first month are archived: kept for history
       // and balances, but not shown day to day.
       if (since) query = query.gte('date', since);
+      if (accountId) query = query.eq('account_id', accountId);
       if (filter === 'review') {
         // Starting Balance rows and off-budget accounts never need a type.
         query = query

@@ -2,7 +2,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -12,11 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/form';
 import { Segmented } from '@/components/segmented';
+import { TransactionRow } from '@/components/transaction-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { showToast } from '@/components/toast';
-import { accountDisplayName } from '@/domain/accounts';
-import { formatCents } from '@/domain/money';
 import { formatDay, formatMonth } from '@/domain/month';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -163,83 +161,6 @@ export default function TransactionsScreen() {
   );
 }
 
-function TransactionRow({
-  txn,
-  first,
-  last,
-  background,
-  border,
-  archived,
-}: {
-  txn: Transaction;
-  first: boolean;
-  last: boolean;
-  background: string;
-  border: string;
-  /** Before the budget's first month: history only. */
-  archived: boolean;
-}) {
-  const payee = txn.payee?.name ?? txn.imported_payee ?? 'No payee';
-  const filed = rowLabel(txn);
-  const label = archived && filed === 'To review' ? 'Archived' : filed;
-  const needsReview = label === 'To review';
-  const details = [
-    txn.pending ? 'Pending' : null,
-    txn.account && accountDisplayName(txn.account),
-  ].filter(Boolean);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityHint="Edit or categorize"
-      onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: txn.id } })}
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: background },
-        first && styles.firstRow,
-        last && styles.lastRow,
-        !first && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: border },
-        pressed && styles.pressed,
-      ]}>
-      <View style={styles.rowText}>
-        <ThemedText numberOfLines={1}>{payee}</ThemedText>
-        <ThemedText type="small" numberOfLines={1}>
-          <ThemedText type="small" themeColor={needsReview ? 'accent' : 'textSecondary'}>
-            {label}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {details.length > 0 ? ` · ${details.join(' · ')}` : ''}
-          </ThemedText>
-        </ThemedText>
-      </View>
-      <ThemedText themeColor={txn.amount > 0 ? 'accent' : 'text'} style={styles.amount}>
-        {formatCents(txn.amount)}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-/** How a transaction was filed: its type, envelope and category. */
-function rowLabel(txn: Transaction): string {
-  if (txn.account?.on_budget === false) return 'Off budget';
-  if (txn.imported_id === 'starting-balance') return 'Starting balance';
-  if (txn.is_parent) return 'Split';
-  const other = txn.transferAccount ? accountDisplayName(txn.transferAccount) : 'another account';
-  const category = txn.category ? ` · ${txn.category.name}` : '';
-  switch (txn.kind) {
-    case 'transfer':
-      return txn.transfer_id ? `Transfer ${txn.amount < 0 ? 'to' : 'from'} ${other}` : 'Transfer';
-    case 'investment':
-      return `Invested from ${txn.envelope?.name ?? 'an envelope'}`;
-    case 'income':
-      return `Income${txn.envelope ? ` into ${txn.envelope.name}` : ''}${category}`;
-    case 'spending':
-      return `${txn.envelope?.name ?? 'No envelope'}${category}`;
-    default:
-      return 'To review';
-  }
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: Spacing.three, paddingBottom: Spacing.six },
@@ -250,16 +171,4 @@ const styles = StyleSheet.create({
   footer: { marginTop: Spacing.three },
   flex: { flex: 1 },
   sectionHeader: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  firstRow: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
-  lastRow: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
-  rowText: { flex: 1 },
-  pressed: { opacity: 0.6 },
-  amount: { fontVariant: ['tabular-nums'] },
 });
