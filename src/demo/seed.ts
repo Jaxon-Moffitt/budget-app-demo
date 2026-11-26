@@ -80,8 +80,8 @@ export function seed(now: Date = new Date()): Tables {
     ['travel', 'saving', 'Travel fund', 15000, 120000, 'trv'],
     ['car', 'saving', 'Car maintenance', 5000, 30000, null],
     ['invest', 'saving', 'Investing', 25000, 0, null],
-    ['fts', 'fun', 'Free to spend', 70000, 0, null],
-    ['gifts', 'fun', 'Gifts', 5000, 0, null],
+    ['fts', 'fun', 'Free to spend', 70000, 0, 'chk'],
+    ['gifts', 'fun', 'Gifts', 5000, 0, 'chk'],
   ];
   const envelopes = envelopeSpecs.map(([id, group_id, name, target, starting_balance, linked], i) => ({
     id,

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { Button } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
+import { accountDisplayName, compareAccounts } from '@/domain/accounts';
 import { isHidden } from '@/domain/categories';
 import { formatCents } from '@/domain/money';
 import { localDate, monthName } from '@/domain/month';
@@ -43,6 +44,18 @@ export function BudgetSimpleView({ toggle }: { toggle: ReactNode }) {
     const order = visible.flatMap(g => g.envelopes);
     return order.filter(e => ids.includes(e.id));
   }, [view, accounts.data, chosen.data, bills]);
+
+  // Each spending envelope under the bank account its money sits in, in
+  // the Accounts tab's order; any not tied to an open account come last.
+  const spendingGroups = useMemo(() => {
+    const open = (accounts.data ?? []).filter(a => !a.closed).sort(compareAccounts);
+    const groups = open
+      .map(account => ({ key: account.id, account, envelopes: discretionary.filter(e => e.linked_account_id === account.id) }))
+      .filter(g => g.envelopes.length > 0);
+    const placed = new Set(groups.map(g => g.key));
+    const loose = discretionary.filter(e => !e.linked_account_id || !placed.has(e.linked_account_id));
+    return loose.length > 0 ? [...groups, { key: 'none', account: null, envelopes: loose }] : groups;
+  }, [accounts.data, discretionary]);
 
   async function refresh() {
     setRefreshing(true);
@@ -123,32 +136,50 @@ export function BudgetSimpleView({ toggle }: { toggle: ReactNode }) {
             No envelopes chosen.
           </ThemedText>
         ) : (
-          <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-            {discretionary.map((e, i) => {
-              const left = balanceOf(e.id);
-              return (
-                <Pressable
-                  key={e.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${e.name}: ${formatCents(left)} left`}
-                  accessibilityHint="See this month's money in and out"
-                  onPress={() => router.push({ pathname: '/budget/spending', params: { envelopeId: e.id } })}
-                  style={({ pressed }) => [
-                    styles.row,
-                    i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
-                    pressed && styles.dim,
-                  ]}>
-                  <Icon name="envelope" size={18} color={theme.textSecondary} />
-                  <ThemedText numberOfLines={1} style={[styles.flex, styles.name]}>
-                    {e.name}
+          spendingGroups.map(group => (
+            <View key={group.key} style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint={group.account ? 'See its transactions' : undefined}
+                disabled={!group.account}
+                onPress={() => group.account && router.push({ pathname: '/account/history', params: { id: group.account.id } })}
+                style={({ pressed }) => [styles.accountHead, pressed && styles.dim]}>
+                {group.account && <Icon name="bank" size={20} color={theme.accent} />}
+                <ThemedText numberOfLines={2} style={[styles.flex, styles.accountName]}>
+                  {group.account ? accountDisplayName(group.account) : 'Not tied to an account'}
+                </ThemedText>
+                {group.account && (
+                  <ThemedText style={styles.amount} themeColor={group.account.balance < 0 ? 'danger' : 'textSecondary'}>
+                    {formatCents(group.account.balance)}
                   </ThemedText>
-                  <ThemedText style={styles.amount} themeColor={left < 0 ? 'danger' : 'text'}>
-                    {formatCents(left)}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
+                )}
+              </Pressable>
+              {group.envelopes.map(e => {
+                const left = balanceOf(e.id);
+                return (
+                  <Pressable
+                    key={e.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${e.name}: ${formatCents(left)} left`}
+                    accessibilityHint="See this month's money in and out"
+                    onPress={() => router.push({ pathname: '/budget/spending', params: { envelopeId: e.id } })}
+                    style={({ pressed }) => [
+                      styles.row,
+                      { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+                      pressed && styles.dim,
+                    ]}>
+                    <Icon name="envelope" size={18} color={theme.textSecondary} />
+                    <ThemedText numberOfLines={1} style={[styles.flex, styles.name]}>
+                      {e.name}
+                    </ThemedText>
+                    <ThemedText style={styles.amount} themeColor={left < 0 ? 'danger' : 'text'}>
+                      {formatCents(left)}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))
         )}
         <Button variant="plain" title="Choose envelopes" onPress={() => router.push('/budget/simple-envelopes')} />
       </View>
@@ -219,6 +250,8 @@ const styles = StyleSheet.create({
   loading: { marginTop: Spacing.six },
   title: { fontSize: 30, lineHeight: 36, fontWeight: 800, letterSpacing: -0.6, paddingHorizontal: Spacing.one },
   card: { borderRadius: 20, overflow: 'hidden' },
+  accountHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two + Spacing.one, padding: Spacing.three },
+  accountName: { fontWeight: 700 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, padding: Spacing.three },
   topAmount: { fontSize: 22, fontWeight: 800, fontVariant: ['tabular-nums'] },
   section: { gap: Spacing.two },
