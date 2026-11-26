@@ -248,3 +248,30 @@ export function useIncomeHistory(since: string) {
     },
   });
 }
+
+/**
+ * Spending nobody has given an envelope yet, since `since`: the money in
+ * To review going out (bank rows not yet filed, transfers left out), as a
+ * positive total, and how many rows.
+ */
+export function useUnfiledSpending(since: string | null) {
+  return useQuery({
+    queryKey: ['transactions', 'unfiled-spending', since],
+    async queryFn(): Promise<{ total: Cents; count: number }> {
+      let query = supabase
+        .from('transactions')
+        .select('amount, imported_id, account:accounts!inner(on_budget)')
+        .eq('account.on_budget', true)
+        .is('kind', null)
+        .is('transfer_id', null)
+        .is('parent_id', null)
+        .eq('is_parent', false)
+        .lt('amount', 0);
+      if (since) query = query.gte('date', since);
+      const { data, error } = await query;
+      if (error) throw error;
+      const rows = (data as { amount: Cents; imported_id: string | null }[]).filter(r => r.imported_id !== 'starting-balance');
+      return { total: rows.reduce((s, r) => s - r.amount, 0), count: rows.length };
+    },
+  });
+}

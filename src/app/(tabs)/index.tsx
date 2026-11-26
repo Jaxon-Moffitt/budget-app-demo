@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BudgetAccountsView } from '@/components/budget-accounts-view';
+import { BudgetSimpleView } from '@/components/budget-simple-view';
 import { Button } from '@/components/form';
 import { IconButton } from '@/components/icon-button';
 import { Segmented } from '@/components/segmented';
@@ -30,10 +31,11 @@ import { prefStorage } from '@/lib/storage';
 /** Planning ahead is allowed a couple of months past today. */
 const MONTHS_AHEAD = 2;
 
-type BudgetLayout = 'envelopes' | 'accounts';
+type BudgetLayout = 'envelopes' | 'accounts' | 'simple';
 const LAYOUTS = [
   { value: 'envelopes', label: 'Envelopes' },
   { value: 'accounts', label: 'Accounts' },
+  { value: 'simple', label: 'Simple' },
 ] as const;
 const LAYOUT_KEY = 'budget-layout';
 
@@ -47,7 +49,7 @@ function useBudgetLayout() {
     prefStorage
       .getItem(LAYOUT_KEY)
       .then(saved => {
-        if (saved === 'envelopes' || saved === 'accounts') setLayout(saved);
+        if (saved === 'envelopes' || saved === 'accounts' || saved === 'simple') setLayout(saved);
       })
       .catch(() => {});
   }, []);
@@ -78,6 +80,8 @@ export default function BudgetScreen() {
           <StartBudgeting household={household} />
         ) : layout === 'accounts' ? (
           <BudgetAccountsView toggle={toggle} />
+        ) : layout === 'simple' ? (
+          <BudgetSimpleView toggle={toggle} />
         ) : (
           <BudgetMonthView
             toggle={toggle}
