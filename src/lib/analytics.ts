@@ -162,6 +162,7 @@ export function useChargeHistory(since: string) {
         date: string;
         amount: Cents;
         kind: string | null;
+        envelope_id: string | null;
         imported_id: string | null;
         imported_payee: string | null;
         payee: { name: string } | null;
@@ -170,7 +171,7 @@ export function useChargeHistory(since: string) {
       for (let offset = 0; ; offset += PAGE) {
         const { data, error } = await supabase
           .from('transactions')
-          .select('id, date, amount, kind, imported_id, imported_payee, payee:payees(name), account:accounts!inner(on_budget)')
+          .select('id, date, amount, kind, envelope_id, imported_id, imported_payee, payee:payees(name), account:accounts!inner(on_budget)')
           .eq('account.on_budget', true)
           .is('parent_id', null)
           .is('transfer_id', null)
@@ -187,7 +188,7 @@ export function useChargeHistory(since: string) {
           const merchant = r.payee?.name ?? r.imported_payee;
           if (!merchant) continue;
           if (r.kind === null && MOVES_MONEY.test(`${merchant} ${r.imported_payee ?? ''}`)) continue;
-          out.push({ date: r.date, amount: r.amount, merchant });
+          out.push({ date: r.date, amount: r.amount, merchant, envelopeId: r.envelope_id });
         }
         if (rows.length < PAGE) return out;
       }
@@ -218,6 +219,32 @@ export function useAccountActivity(since: string) {
         for (const r of rows) out.push({ account_id: r.account_id, date: r.date, amount: r.amount });
         if (rows.length < PAGE) return out;
       }
+    },
+  });
+}
+
+/**
+ * Income into Ready to assign since `since`, for learning paydays. Income
+ * kept in an envelope (interest) and Starting Balance rows are left out.
+ */
+export function useIncomeHistory(since: string) {
+  return useQuery({
+    queryKey: ['transactions', 'income', since],
+    async queryFn(): Promise<{ date: string; amount: Cents }[]> {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('date, amount, imported_id, account:accounts!inner(on_budget)')
+        .eq('account.on_budget', true)
+        .eq('kind', 'income')
+        .is('envelope_id', null)
+        .is('parent_id', null)
+        .gt('amount', 0)
+        .gte('date', since)
+        .order('date');
+      if (error) throw error;
+      return (data as { date: string; amount: Cents; imported_id: string | null }[])
+        .filter(r => r.imported_id !== 'starting-balance')
+        .map(r => ({ date: r.date, amount: r.amount }));
     },
   });
 }

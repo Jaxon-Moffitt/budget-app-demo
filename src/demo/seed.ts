@@ -68,11 +68,14 @@ export function seed(now: Date = new Date()): Tables {
 
   // id, group, name, monthly target (cents), starting balance, linked account
   const envelopeSpecs: [string, string, string, number | null, number, string | null][] = [
-    ['rent', 'fixed', 'Rent', 145000, 0, null],
-    ['util', 'fixed', 'Utilities & Internet', 18000, 0, null],
-    ['phone', 'fixed', 'Phone plan', 4500, 0, null],
+    // Bills paid from checking are tied to it, so the Accounts view lists them there.
+    ['rent', 'fixed', 'Rent', 145000, 0, 'chk'],
+    ['util', 'fixed', 'Utilities & Internet', 18000, 0, 'chk'],
+    ['phone', 'fixed', 'Phone plan', 4500, 0, 'chk'],
     ['subs', 'fixed', 'Subscriptions', 3000, 0, null],
-    ['ins', 'fixed', 'Insurance', 12800, 0, null],
+    // Car insurance is $768 every 6 months; the envelope saves $128 a month
+    // toward it and started with what the last payment needed.
+    ['ins', 'fixed', 'Insurance', 12800, 51200, 'chk'],
     ['ef', 'saving', 'Emergency fund', 30000, 850000, 'sav'],
     ['travel', 'saving', 'Travel fund', 15000, 120000, 'trv'],
     ['car', 'saving', 'Car maintenance', 5000, 30000, null],
@@ -197,6 +200,9 @@ export function seed(now: Date = new Date()): Tables {
     if (happened(date)) add({ account, date, amount: -varied, payee, kind: 'spending', envelope, category });
   };
 
+  // The insurance payment before this one, six months back.
+  spend('chk', addMonths(current, -6), 22, 76800, 'Safe Auto Insurance', 'ins', 'insurance');
+
   let cardBalance = 64000;
   for (const month of monthRange(first, current)) {
     const isPrev = month === previous;
@@ -228,7 +234,7 @@ export function seed(now: Date = new Date()): Tables {
     spend('card', month, 17, 7430, "Trader Joe's", 'fts', 'groceries');
     spend('chk', month, 18, 4500, 'Mobile Co', 'phone');
     spend('card', month, 20, 1199, 'Spotify', 'subs', 'streaming');
-    spend('chk', month, 22, 12800, 'Safe Auto Insurance', 'ins', 'insurance');
+    if (month === current) spend('chk', month, 22, 76800, 'Safe Auto Insurance', 'ins', 'insurance');
     spend('card', month, 23, 4820, 'Shell', 'fts', 'gas');
     spend('card', month, 24, 9588, "Trader Joe's", 'fts', 'groceries');
     spend('card', month, 27, 6340, 'Sushi House', 'fts', 'dining');

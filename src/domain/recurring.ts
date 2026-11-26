@@ -11,9 +11,11 @@ export type ChargeRow = {
   amount: Cents;
   /** Payee name, else the bank's description. */
   merchant: string;
+  /** The envelope it was filed to, if it was. */
+  envelopeId?: string | null;
 };
 
-export type Cadence = 'weekly' | 'every 2 weeks' | 'monthly' | 'every 3 months' | 'yearly';
+export type Cadence = 'weekly' | 'every 2 weeks' | 'monthly' | 'every 3 months' | 'every 6 months' | 'yearly';
 
 export type Recurring = {
   merchant: string;
@@ -39,6 +41,7 @@ const CADENCES: { cadence: Cadence; min: number; max: number; minCharges: number
   { cadence: 'every 2 weeks', min: 12, max: 16, minCharges: 3, spread: 0.1 },
   { cadence: 'monthly', min: 26, max: 35, minCharges: 3, spread: 0.25, months: 1 },
   { cadence: 'every 3 months', min: 84, max: 98, minCharges: 2, spread: 0.25, months: 3 },
+  { cadence: 'every 6 months', min: 174, max: 192, minCharges: 2, spread: 0.25, months: 6 },
   { cadence: 'yearly', min: 350, max: 380, minCharges: 2, spread: 0.25, months: 12 },
 ];
 
@@ -46,7 +49,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const toDay = (date: string) => Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10)) / DAY;
 const fromDay = (day: number) => new Date(day * DAY).toISOString().slice(0, 10);
 /** The same day `n` months later, or the month's last day if it's shorter. */
-function addCalendarMonths(date: string, n: number): string {
+export function addCalendarMonths(date: string, n: number): string {
   const index = +date.slice(0, 4) * 12 + (+date.slice(5, 7) - 1) + n;
   const y = Math.floor(index / 12);
   const m = (index % 12) + 1;
@@ -134,7 +137,8 @@ export function findRecurring(rows: ChargeRow[], today: string): Recurring[] {
       varies: amounts.slice(-6).some(a => Math.abs(a - recent) > Math.max(recent * 0.05, 100)),
       lastDate,
       nextDate: fit.months ? addCalendarMonths(lastDate, fit.months) : fromDay(last + Math.round(gap)),
-      monthly: Math.round((recent * 30.44) / gap),
+      // Calendar schedules divide evenly: $768 every 6 months is $128 a month.
+      monthly: fit.months ? Math.round(recent / fit.months) : Math.round((recent * 30.44) / gap),
       count: charges.length,
     });
   }

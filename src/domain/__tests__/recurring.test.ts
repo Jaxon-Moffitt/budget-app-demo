@@ -79,6 +79,16 @@ describe('findRecurring', () => {
     });
   });
 
+  it('finds a bill paid every 6 months, like car insurance', () => {
+    const rows = [charge('2025-11-22', 768, 'SAFE AUTO INSURANCE'), charge('2026-05-22', 768, 'SAFE AUTO INSURANCE')];
+    expect(findRecurring(rows, '2026-11-01')[0]).toMatchObject({
+      cadence: 'every 6 months',
+      amount: 76800,
+      nextDate: '2026-11-22',
+      monthly: 12800,
+    });
+  });
+
   it('keeps monthly charges on their day, even in short months', () => {
     const rows = monthly('31', 20, 'GYM', ['2026-07', '2026-08']).concat(charge('2026-09-30', 20, 'GYM'), charge('2026-10-31', 20, 'GYM'));
     expect(findRecurring(rows, '2026-11-10')[0].nextDate).toBe('2026-11-30');

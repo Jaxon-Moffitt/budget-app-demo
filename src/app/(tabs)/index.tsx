@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BudgetAccountsView } from '@/components/budget-accounts-view';
 import { Button } from '@/components/form';
 import { IconButton } from '@/components/icon-button';
 import { Segmented } from '@/components/segmented';
@@ -24,14 +25,45 @@ import { BottomTabInset, Spacing, STATUS_COLOR } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { currentMonth, useBudget, useSetBudgetStart, type BudgetView } from '@/lib/budget';
 import type { Household } from '@/lib/queries';
+import { prefStorage } from '@/lib/storage';
 
 /** Planning ahead is allowed a couple of months past today. */
 const MONTHS_AHEAD = 2;
+
+type BudgetLayout = 'envelopes' | 'accounts';
+const LAYOUTS = [
+  { value: 'envelopes', label: 'Envelopes' },
+  { value: 'accounts', label: 'Accounts' },
+] as const;
+const LAYOUT_KEY = 'budget-layout';
+
+/**
+ * Which way the Budget tab is shown, kept per phone: one of you likes the
+ * envelope list, the other the accounts with their envelopes and timelines.
+ */
+function useBudgetLayout() {
+  const [layout, setLayout] = useState<BudgetLayout>('envelopes');
+  useEffect(() => {
+    prefStorage
+      .getItem(LAYOUT_KEY)
+      .then(saved => {
+        if (saved === 'envelopes' || saved === 'accounts') setLayout(saved);
+      })
+      .catch(() => {});
+  }, []);
+  const choose = (next: BudgetLayout) => {
+    setLayout(next);
+    prefStorage.setItem(LAYOUT_KEY, next).catch(() => {});
+  };
+  return [layout, choose] as const;
+}
 
 export default function BudgetScreen() {
   const [month, setMonth] = useState<Month>(currentMonth());
   const budget = useBudget(month);
   const household = budget.household.data;
+  const [layout, setLayout] = useBudgetLayout();
+  const toggle = <Segmented<BudgetLayout> options={LAYOUTS} value={layout} onChange={setLayout} />;
 
   return (
     <ThemedView style={styles.container}>
@@ -44,8 +76,11 @@ export default function BudgetScreen() {
           </ThemedText>
         ) : !household.budgetStart || !budget.view ? (
           <StartBudgeting household={household} />
+        ) : layout === 'accounts' ? (
+          <BudgetAccountsView toggle={toggle} />
         ) : (
           <BudgetMonthView
+            toggle={toggle}
             view={budget.view}
             household={household}
             month={month < budget.view.start ? budget.view.start : month}
@@ -90,12 +125,14 @@ function StartBudgeting({ household }: { household: Household }) {
 }
 
 function BudgetMonthView({
+  toggle,
   view,
   household,
   month,
   onMonth,
   onRefresh,
 }: {
+  toggle: ReactNode;
   view: BudgetView;
   household: Household;
   month: Month;
@@ -135,6 +172,7 @@ function BudgetMonthView({
     <ScrollView
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+      {toggle}
       <View style={styles.header}>
         <View style={styles.flex}>
           <ThemedText type="small" themeColor="textSecondary" style={styles.semibold}>
