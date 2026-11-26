@@ -2,27 +2,28 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { accountDisplayName, accountTypeLabel, compareAccounts } from '@/domain/accounts';
 import { isHidden } from '@/domain/categories';
 import { linkedCheck } from '@/domain/envelope';
 import { formatCents } from '@/domain/money';
-import { monthName } from '@/domain/month';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useForecasts, type EnvelopeForecast } from '@/lib/forecast';
+import { currentMonth, useBudget } from '@/lib/budget';
 import { useAccounts, type Account, type Envelope } from '@/lib/queries';
 
 /**
  * The Budget tab by account: each bank account with its balance and the
  * envelopes whose money sits in it (an envelope's linked account), each
- * envelope with what's coming next. Envelopes not tied to an account are
- * listed after. Tapping an envelope opens its timeline.
+ * envelope with its balance. Envelopes not tied to an account are listed
+ * after. Tapping an envelope opens its timeline.
  */
 export function BudgetAccountsView({ toggle }: { toggle: ReactNode }) {
   const theme = useTheme();
   const accounts = useAccounts();
-  const { forecasts, budget, isPending, error } = useForecasts();
+  const budget = useBudget(currentMonth());
+  const { isPending, error } = budget;
   const [refreshing, setRefreshing] = useState(false);
   const view = budget.view;
 
@@ -82,7 +83,6 @@ export function BudgetAccountsView({ toggle }: { toggle: ReactNode }) {
           account={account}
           envelopes={visible.filter(e => e.linked_account_id === account.id)}
           balanceOf={balanceOf}
-          forecasts={forecasts}
         />
       ))}
 
@@ -97,7 +97,7 @@ export function BudgetAccountsView({ toggle }: { toggle: ReactNode }) {
             </View>
           </View>
           {loose.map(e => (
-            <EnvelopeLine key={e.id} envelope={e} balance={balanceOf(e.id)} forecast={forecasts?.get(e.id)} />
+            <EnvelopeLine key={e.id} envelope={e} balance={balanceOf(e.id)} />
           ))}
         </View>
       )}
@@ -114,6 +114,7 @@ export function BudgetAccountsView({ toggle }: { toggle: ReactNode }) {
               accessibilityHint="See its transactions"
               onPress={() => router.push({ pathname: '/account/history', params: { id: a.id } })}
               style={({ pressed }) => [styles.line, { borderColor: theme.border }, pressed && styles.dim]}>
+              <Icon name="bank" size={20} color={theme.textSecondary} />
               <View style={styles.flex}>
                 <ThemedText numberOfLines={1}>{accountDisplayName(a)}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
@@ -133,12 +134,10 @@ function AccountCard({
   account,
   envelopes,
   balanceOf,
-  forecasts,
 }: {
   account: Account;
   envelopes: Envelope[];
   balanceOf(id: string): number;
-  forecasts: Map<string, EnvelopeForecast> | null;
 }) {
   const theme = useTheme();
   const check = linkedCheck(account.balance, envelopes.map(e => balanceOf(e.id)));
@@ -164,8 +163,9 @@ function AccountCard({
         accessibilityHint="See its transactions"
         onPress={() => router.push({ pathname: '/account/history', params: { id: account.id } })}
         style={({ pressed }) => [styles.cardHead, pressed && styles.dim]}>
+        <Icon name="bank" size={22} color={theme.accent} />
         <View style={styles.flex}>
-          <ThemedText style={styles.accountName} numberOfLines={1}>
+          <ThemedText style={styles.accountName} numberOfLines={2}>
             {accountDisplayName(account)}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
@@ -177,7 +177,7 @@ function AccountCard({
         </ThemedText>
       </Pressable>
       {envelopes.map(e => (
-        <EnvelopeLine key={e.id} envelope={e} balance={balanceOf(e.id)} forecast={forecasts?.get(e.id)} />
+        <EnvelopeLine key={e.id} envelope={e} balance={balanceOf(e.id)} />
       ))}
       {status && (
         <ThemedText type="small" themeColor={status.color} style={styles.status}>
@@ -188,57 +188,25 @@ function AccountCard({
   );
 }
 
-/** One envelope under its account: its balance and what's coming next. */
-function EnvelopeLine({
-  envelope,
-  balance,
-  forecast,
-}: {
-  envelope: Envelope;
-  balance: number;
-  forecast: EnvelopeForecast | undefined;
-}) {
+/** One envelope under its account, with its balance. */
+function EnvelopeLine({ envelope, balance }: { envelope: Envelope; balance: number }) {
   const theme = useTheme();
-  const next = nextLine(forecast);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${envelope.name}: ${formatCents(balance)}. ${next.text}`}
+      accessibilityLabel={`${envelope.name}: ${formatCents(balance)}`}
       accessibilityHint="See its timeline"
       onPress={() => router.push({ pathname: '/budget/timeline', params: { envelopeId: envelope.id } })}
       style={({ pressed }) => [styles.line, { borderColor: theme.border }, pressed && styles.dim]}>
-      <View style={styles.flex}>
-        <ThemedText numberOfLines={1} style={styles.envelopeName}>
-          {envelope.name}
-        </ThemedText>
-        <ThemedText type="small" themeColor={next.color} numberOfLines={1}>
-          {next.text}
-        </ThemedText>
-      </View>
+      <Icon name="envelope" size={18} color={theme.textSecondary} />
+      <ThemedText numberOfLines={1} style={[styles.flex, styles.envelopeName]}>
+        {envelope.name}
+      </ThemedText>
       <ThemedText style={styles.amount} themeColor={balance < 0 ? 'danger' : 'text'}>
         {formatCents(balance)}
       </ThemedText>
     </Pressable>
   );
-}
-
-/** "Dec 1": short enough for one line under an envelope. */
-const shortDate = (date: string) => `${monthName(date.slice(0, 7), 'short')} ${Number(date.slice(8))}`;
-
-/** The one thing to know about an envelope's next weeks, in one short line. */
-function nextLine(forecast: EnvelopeForecast | undefined): { text: string; color: 'textSecondary' | 'danger' | 'accent' } {
-  if (!forecast) return { text: '', color: 'textSecondary' };
-  if (forecast.coverage.kind === 'short') {
-    const c = forecast.coverage;
-    return { text: `${formatCents(c.short)} short for the ${shortDate(c.date)} bill`, color: 'danger' };
-  }
-  const bill = forecast.events.find(e => e.kind === 'bill');
-  if (bill && bill.kind === 'bill') {
-    return { text: `${formatCents(bill.bill.amount)} bill ~${shortDate(bill.date)} · covered`, color: 'textSecondary' };
-  }
-  const fill = forecast.events.find(e => e.kind === 'contribution');
-  if (fill) return { text: `+${formatCents(fill.amount)} next fill, ${shortDate(fill.date)}`, color: 'textSecondary' };
-  return { text: 'Nothing scheduled', color: 'textSecondary' };
 }
 
 const styles = StyleSheet.create({
@@ -260,7 +228,7 @@ const styles = StyleSheet.create({
   line: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
+    gap: Spacing.two + Spacing.one,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two + 2,
     borderTopWidth: StyleSheet.hairlineWidth,

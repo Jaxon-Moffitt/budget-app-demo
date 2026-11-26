@@ -10,6 +10,8 @@ const ICONS = {
   remove: { ios: 'minus', android: 'remove', text: '−' },
   close: { ios: 'xmark', android: 'close', text: '×' },
   done: { ios: 'checkmark.circle.fill', android: 'check_circle', text: '✓' },
+  bank: { ios: 'building.columns', android: 'account_balance', text: '🏦' },
+  envelope: { ios: 'envelope', android: 'mail', text: '✉' },
 } as const;
 
 export type IconName = keyof typeof ICONS;
